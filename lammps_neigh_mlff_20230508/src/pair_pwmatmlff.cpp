@@ -80,64 +80,15 @@ PairPWMATMLFF::PairPWMATMLFF(LAMMPS *lmp) : Pair(lmp)
     min_dR = 1000;
 
     seed = 1745294809;
+
+    explrError_fname = "explr.error";
+    explrError_fp = fopen(&explrError_fname[0], "w");
+
 }
 
 PairPWMATMLFF::~PairPWMATMLFF()
 {
     if (copymode) return;
-
-    if (num_ff > 1) {
-      int num_select;
-      unsigned seed, all_seed;
-      int i;
-
-      if (me == 0) {
-
-        FILE *fp;
-
-        /* dump stat file */
-        string fname = "explr.stat";
-        fp = fopen(&fname[0], "w");
-
-        fprintf(fp,"num_succes num_cand num_fail\n");
-        fprintf(fp,"%9d %9d %9d \n",
-          num_success, num_cand, num_fail);
-        fclose(fp);
-
-        /* dump error list */
-        fname = "explr.error";
-        fp = fopen(&fname[0], "w");
-
-        for(i=0; i<max_err_list.size(); i++)
-          fprintf(fp, "%9d %16.9f \n", i, max_err_list[i]);
-        fclose(fp);
-      }
-
-      /* pick out 10 config for later selection */
-      num_select = MIN(10,num_cand);
-
-      if (num_select > 0 ) {
-        vector<int> idx(num_cand,0);
-
-        for (i=0; i<num_cand; i++)
-          idx[i] = i;
-
-        shuffle(idx.begin(),idx.end(), std::default_random_engine(seed));
-
-        for(i=0; i< num_select; i++ ) {
-          /*
-              write candidates' configs
-              RANDOMLY CHOOSE 10 CONFIGS
-              do padding if num_cand < num_select
-          */
-          if (i<num_cand) {
-            write_config(atom_config_list[idx[i]],i,config_id[idx[i]]);
-          } else {
-            write_config(atom_config_list[idx[num_cand-1]],i,config_id[idx[num_cand-1]]);
-          }
-        }
-      }
-    }
 
     if (allocated) {
       memory->destroy(setflag);
@@ -160,6 +111,7 @@ PairPWMATMLFF::~PairPWMATMLFF()
       if (me == 0) printf("!!!Force field memory released\n");
     }
 
+    fclose(explrError_fp);
 }
 
 void PairPWMATMLFF::compute(int eflag, int vflag)
@@ -249,7 +201,10 @@ void PairPWMATMLFF::compute(int eflag, int vflag)
     max_err = calc_max_f_err(f_n);
 
     MPI_Allreduce(&max_err,&global_max_err,1,MPI_DOUBLE,MPI_MAX,world);
+
     max_err_list.push_back(global_max_err);
+
+    fprintf(explrError_fp, "%9d %16.9f\n", max_err_list.size(), global_max_err);
 
     //$ for maximum effect explor configuration,
     //  the chose save structure should not too similar
@@ -279,6 +234,9 @@ void PairPWMATMLFF::compute(int eflag, int vflag)
   // potential energy
   if (eflag_global)
     eng_vdwl += e_tot;
+
+  if (update->ntimestep == update->laststep)
+    write_info(); 
 
 }
 
@@ -672,3 +630,57 @@ void PairPWMATMLFF::write_config(
 
   memory->destroy(buf);
 }
+
+
+void PairPWMATMLFF::write_info()
+{
+  if (num_ff > 1) {
+    int num_select;
+    unsigned seed, all_seed;
+    int i;
+
+    if (me == 0) {
+
+      FILE *fp;
+
+      /* dump stat file */
+      string fname = "explr.stat";
+      fp = fopen(&fname[0], "w");
+
+      fprintf(fp,"num_succes num_cand num_fail\n");
+      fprintf(fp,"%9d %9d %9d \n",
+        num_success, num_cand, num_fail);
+      fclose(fp);
+
+    }
+
+    /* pick out 10 config for later selection */
+    num_select = MIN(10,num_cand);
+
+    if (num_select > 0 ) {
+      vector<int> idx(num_cand,0);
+
+      for (i=0; i<num_cand; i++)
+        idx[i] = i;
+
+      shuffle(idx.begin(),idx.end(), std::default_random_engine(seed));
+
+      for(i=0; i< num_select; i++ ) {
+        /*
+            write candidates' configs
+            RANDOMLY CHOOSE 10 CONFIGS
+            do padding if num_cand < num_select
+        */
+        if (i<num_cand) {
+          write_config(atom_config_list[idx[i]],i,config_id[idx[i]]);
+        } else {
+          write_config(atom_config_list[idx[num_cand-1]],i,config_id[idx[num_cand-1]]);
+        }
+      }
+    }
+  }
+
+}
+
+
+

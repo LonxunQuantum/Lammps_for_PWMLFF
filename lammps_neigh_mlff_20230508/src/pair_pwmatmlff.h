@@ -111,6 +111,9 @@ class PairPWMATMLFF : public Pair
     vector<double> max_err_list; 
     vector<atom_config> atom_config_list; 
     vector<int> config_id;
+
+    string explrError_fname;
+    FILE *explrError_fp;
     
     // major member functions 
     void compute(int, int) override;
@@ -126,6 +129,7 @@ class PairPWMATMLFF : public Pair
     void generate_neighdata();
     double calc_max_f_err(double***);
     void write_config(class atom_config& , int , int timestep);
+    void write_info();
     
 };
 
