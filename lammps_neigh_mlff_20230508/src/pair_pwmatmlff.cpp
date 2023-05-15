@@ -55,7 +55,10 @@ extern "C"
                                 double* /*virial*/,
                                 int* /*ff_idx*/);
     // ff data loading
-    void dp_ff_load(char*, int*, int*, double*);
+    void dp_ff_load(char* /*file name*/ ,
+                    int* /*ff index */,
+                    int* /*file name length*/,
+                    double* /*neighbor cutoff*/);
 
     // ff data destroy
     // pointer of the name string
@@ -304,7 +307,7 @@ void PairPWMATMLFF::coeff(int narg, char** arg)
     } else if ( ((num_ff > 1) && (narg != (2+2+num_ff+ntypes+2))) ) {
        error->all(FLERR, "pair_coeff error:\
          * * imodel num_mlff 1.ff 2.ff ... \
-             elem1 elem2 ... cut1 cut2 ... \
+             elem1 elem2 ... \
              fail_err candidate_err");
     }
   

@@ -11,7 +11,7 @@ Reading data file ...
   2 by 2 by 2 MPI processor grid
   reading atoms ...
   72 atoms
-  read_data CPU = 0.008 seconds
+  read_data CPU = 0.005 seconds
 pair_style      pwmatmlff
 pair_coeff      * * 5 4 1.ff 2.ff 3.ff 4.ff 3 14 0.12 0.25
 velocity        all create 1200 206952 dist gaussian
@@ -654,20 +654,20 @@ Per MPI rank memory allocation (min/avg/max) = 3.739 | 3.739 | 3.739 Mbytes
        615  -12560.494      10.557984     -12549.936      1150.4242      1334.04        65.614839    
        616  -12560.395      10.43532      -12549.96       1137.0584      1334.3427      563.01851    
        617  -12560.292      10.309261     -12549.982      1123.3228      1334.6759      1074.874     
-Loop time of 20.6368 on 8 procs for 617 steps with 72 atoms
+Loop time of 20.7098 on 8 procs for 617 steps with 72 atoms
 
-Performance: 2.583 ns/day, 9.291 hours/ns, 29.898 timesteps/s, 2.153 katom-step/s
+Performance: 2.574 ns/day, 9.324 hours/ns, 29.793 timesteps/s, 2.145 katom-step/s
 99.5% CPU use with 8 MPI tasks x no OpenMP threads
 
 MPI task timing breakdown:
 Section |  min time  |  avg time  |  max time  |%varavg| %total
 ---------------------------------------------------------------
-Pair    | 20.46      | 20.465     | 20.493     |   0.2 | 99.17
-Neigh   | 0.0023419  | 0.0025634  | 0.0027466  |   0.2 |  0.01
-Comm    | 0.019568   | 0.048435   | 0.052918   |   5.0 |  0.23
-Output  | 0.054576   | 0.05935    | 0.091942   |   5.1 |  0.29
-Modify  | 0.027777   | 0.060401   | 0.065197   |   5.0 |  0.29
-Other   |            | 0.001522   |            |       |  0.01
+Pair    | 20.519     | 20.523     | 20.551     |   0.2 | 99.10
+Neigh   | 0.0023723  | 0.0025542  | 0.0027079  |   0.2 |  0.01
+Comm    | 0.020203   | 0.047959   | 0.052223   |   4.8 |  0.23
+Output  | 0.061508   | 0.067117   | 0.10595    |   5.7 |  0.32
+Modify  | 0.028635   | 0.067651   | 0.073344   |   5.7 |  0.33
+Other   |            | 0.001519   |            |       |  0.01
 
 Nlocal:              9 ave          11 max           6 min
 Histogram: 1 0 0 0 1 0 3 0 2 1
