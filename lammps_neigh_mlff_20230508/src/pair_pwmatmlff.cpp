@@ -81,8 +81,10 @@ PairPWMATMLFF::PairPWMATMLFF(LAMMPS *lmp) : Pair(lmp)
 
     seed = 1745294809;
 
-    explrError_fname = "explr.error";
-    explrError_fp = fopen(&explrError_fname[0], "w");
+    if (me == 0) {
+      explrError_fname = "explr.error";
+      explrError_fp = fopen(&explrError_fname[0], "w");
+    }
 
 }
 
@@ -111,7 +113,7 @@ PairPWMATMLFF::~PairPWMATMLFF()
       if (me == 0) printf("!!!Force field memory released\n");
     }
 
-    fclose(explrError_fp);
+    if (me == 0) fclose(explrError_fp);
 }
 
 void PairPWMATMLFF::compute(int eflag, int vflag)
@@ -204,7 +206,10 @@ void PairPWMATMLFF::compute(int eflag, int vflag)
 
     max_err_list.push_back(global_max_err);
 
-    fprintf(explrError_fp, "%9d %16.9f\n", max_err_list.size(), global_max_err);
+    if (me == 0) {
+      fprintf(explrError_fp, "%9d %16.9f\n", max_err_list.size(), global_max_err);
+      fflush(explrError_fp);
+    }
 
     //$ for maximum effect explor configuration,
     //  the chose save structure should not too similar
@@ -237,7 +242,6 @@ void PairPWMATMLFF::compute(int eflag, int vflag)
 
   if (update->ntimestep == update->laststep)
     write_info(); 
-
 }
 
 void PairPWMATMLFF::allocate()
