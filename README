@@ -1,0 +1,19 @@
+
+
+0. get package
+  git clone https://gitee.com/lxkt-dbmlff-sqj/lammps-mlff.git
+
+1. install (in Mcloud)
+   module load intel/2020
+
+  a) cd lammps-mlff/lammps_neigh_mlff_20230508/src/PWMATMLFF/fortran_code
+     make clean | make
+
+  b) cd lammps-mlff/lammps_neigh_mlff_20230508/src
+     make clean-all | make mpi -j 6
+  
+2. running test example (in Mcloud)
+
+  a) cd EXAMPLES/mpi
+    sbatch run.sh
+

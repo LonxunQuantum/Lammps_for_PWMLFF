@@ -44,7 +44,7 @@ module dp_ff_mod
       integer(4) dp_ff_iat_type(100)
       
       integer(4) dp_ff_max
-      integer(4) dp_ff_Rc_M 
+      real(8) dp_ff_Rc_M 
       integer(4) dp_ff_M2               ! M2 in DP net
 
       real(8) dp_ff_Rc_type(100), dp_ff_R_cs(100)
@@ -68,19 +68,20 @@ module dp_ff_mod
 
     contains 
         
-    subroutine dp_ff_load(name_ptr, ff_idx, len) bind(c,name="dp_ff_load") 
+    subroutine dp_ff_load(name_ptr, ff_idx, slen, ocut) bind(c,name="dp_ff_load") 
       !is_fn_recon = .true. 
 
       character, dimension(300), intent(in) :: name_ptr    ! name string pointer
-      integer, intent(in) :: len             ! length of name string 
+      integer, intent(in) :: slen            ! length of name string 
       integer, intent(in) :: ff_idx          ! index of ff to be loaded 
+      real*8, intent(out) :: ocut
       character(300) temp
       
       !write(*,*) "name_ptr(1) ", name_ptr(1) 
 
       temp = trim(name_ptr(1))
       !write(*,*) "start", temp
-      do i=2,len
+      do i=2,slen
         temp = trim(temp)//trim(name_ptr(i))
       enddo 
 
@@ -253,6 +254,8 @@ module dp_ff_mod
                    ff(ff_idx)%dp_ff_ave_norm(3,i), &
                    ff(ff_idx)%dp_ff_ave_norm(4,i)
       enddo
+
+      ocut = ff(1)%dp_ff_Rc_M
 
       close(10)
         

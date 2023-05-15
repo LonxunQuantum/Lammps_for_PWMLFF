@@ -55,7 +55,7 @@ extern "C"
                                 double* /*virial*/,
                                 int* /*ff_idx*/);
     // ff data loading
-    void dp_ff_load(char*, int*, int*);
+    void dp_ff_load(char*, int*, int*, double*);
 
     // ff data destroy
     // pointer of the name string
@@ -285,6 +285,9 @@ void PairPWMATMLFF::coeff(int narg, char** arg)
     int ff_idx, tff_idx;
     int name_len;
     int ntypes = atom->ntypes;
+    double temp_cut;
+
+    temp_cut = 0.0;
 
     // read in nn model type and nn model number
     imodel = utils::inumeric(FLERR, arg[2], false, lmp);
@@ -294,11 +297,11 @@ void PairPWMATMLFF::coeff(int narg, char** arg)
 
     num_ff = utils::inumeric(FLERR, arg[3], false, lmp);
 
-    if ( ((num_ff == 1) && (narg < (2+2+num_ff+ntypes*2))) ) {
+    if ( ((num_ff == 1) && (narg < (2+2+num_ff+ntypes))) ) {
        error->all(FLERR, "pair_coeff error:\
          * * imodel num_mlff 1.ff 2.ff ... \
              elem1 elem2 ... cut1 cut2 ...");
-    } else if ( ((num_ff > 1) && (narg != (2+2+num_ff+ntypes*2+2))) ) {
+    } else if ( ((num_ff > 1) && (narg != (2+2+num_ff+ntypes+2))) ) {
        error->all(FLERR, "pair_coeff error:\
          * * imodel num_mlff 1.ff 2.ff ... \
              elem1 elem2 ... cut1 cut2 ... \
@@ -321,7 +324,7 @@ void PairPWMATMLFF::coeff(int narg, char** arg)
 
       // fortran index is start from 1
       tff_idx = ff_idx + 1;
-      dp_ff_load(arg[2+2+ff_idx], &tff_idx, &name_len);
+      dp_ff_load(arg[2+2+ff_idx], &tff_idx, &name_len, &temp_cut);
 
       if (comm->me == 0)
         printf("Force field loaded successfully\n\n");
@@ -334,11 +337,11 @@ void PairPWMATMLFF::coeff(int narg, char** arg)
     // read in the neighbor cutoff for each atom type
     for (int i = 1; i <= ntypes; i++) {
       setflag[i][i] = 1;
-      cut[i][i] = utils::numeric(FLERR, arg[i-1+2+2+num_ff+ntypes], false, lmp);
+      cut[i][i] = temp_cut; 
     }
 
     // read in candidate error and fail error
-    if (narg == (2+2+num_ff+ntypes*2+2)) {
+    if (narg == (2+2+num_ff+ntypes+2)) {
       candidate_err = utils::numeric(FLERR, arg[narg-2], false, lmp);
       fail_err = utils::numeric(FLERR, arg[narg-1], false, lmp);
     }
