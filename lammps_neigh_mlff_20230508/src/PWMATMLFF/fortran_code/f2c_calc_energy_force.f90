@@ -43,28 +43,28 @@ subroutine f2c_calc_energy_force(i_model_lvn, &
     logical :: atype_check
     integer :: i, j, t
 
-    !write(*,*) " --- f2c CHECK --- "
-    !write(*,*) "imodel ", i_model_lvn
-    !write(*,*) "nlocal ", inatoms
-    !write(*,*) "nall   ", inall
-    !write(*,*) "ntypes ", intypes
-    !write(*,*) "ff_idx ", ff_idx
+    ! write(*,*) " --- f2c CHECK --- "
+    ! write(*,*) "imodel ", i_model_lvn
+    ! write(*,*) "nlocal ", inatoms
+    ! write(*,*) "nall   ", inall
+    ! write(*,*) "ntypes ", intypes
+    ! write(*,*) "ff_idx ", ff_idx
 
-    !!!do i = 1, inall
-    !!!  write(*,*) i, icatype(i), iatype(i)
-    !!!enddo
+    ! do i = 1, inall
+    !  write(*,*) i, icatype(i), iatype(i)
+    ! enddo
 
-    !do i = 1, inatoms
-    !  write(*,*) i
+    ! do i = 1, inatoms
+    !  write(*,*) "inatoms", i
     !  do t = 1, intypes
     !    write(*,*) "  ", t, inum_neigh(t,i)
-    !    !do j = 1, inum_neigh(t,i)
-    !    !  write(*,"('     ', A, 2(I5, 1X), 3(F12.6, 3X))") &
-    !    !            "     ", j, ilist_neigh(j,t,i), &
-    !    !    idR_neigh(1,j,t,i), idR_neigh(2,j,t,i), idR_neigh(3,j,t,i)
-    !    !enddo
+    !    do j = 1, inum_neigh(t,i)
+    !     write(*,"('     ', A, 2(I5, 1X), 3(F12.6, 3X))") &
+    !               "     ", j, ilist_neigh(j,t,i), &
+    !       idR_neigh(1,j,t,i), idR_neigh(2,j,t,i), idR_neigh(3,j,t,i)
+    !    enddo
     !  enddo
-    !enddo
+    ! enddo
 
     natoms = inatoms
     nall = inall
@@ -110,6 +110,12 @@ subroutine f2c_calc_energy_force(i_model_lvn, &
     f_atom_out(1:3,1:nall) = -1.0*f_atom_out(1:3,1:nall)
     virial_out(1:6) = -1.0*virial_out(1:6)
 
+<<<<<<< HEAD
+=======
+    ! write(*,*) " inum_neigh ", inum_neigh
+    ! write(*,*) " ilist_neigh ", ilist_neigh
+    ! write(*,*) " idR_neigh ", idR_neigh
+>>>>>>> 997016ce (tmp version)
 end
 
 

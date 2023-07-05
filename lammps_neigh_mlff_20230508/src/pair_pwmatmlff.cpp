@@ -429,7 +429,11 @@ void PairPWMATMLFF::grow_memory()
 
 void PairPWMATMLFF::generate_neighdata()
 {
+<<<<<<< HEAD
   int i, j, ii, jj, inum, jnum, itype, jtype;
+=======
+  int i, j, k, ii, jj, inum, jnum, itype, jtype;
+>>>>>>> 997016ce (tmp version)
   double xtmp, ytmp, ztmp, delx, dely, delz, rsq;
   int *ilist, *jlist, *numneigh, **firstneigh;
   int etnum;
@@ -447,10 +451,17 @@ void PairPWMATMLFF::generate_neighdata()
   numneigh = list->numneigh;
   firstneigh = list->firstneigh;
 
-  for (i = 0; i < nlocal; i++)
+  for (i = 0; i < nlocal; i++) {
     for (j = 0; j < ntypes; j++) {
       num_neigh[i][j] = 0;
+      for (k = 0; k < 100; k++) {
+        list_neigh[i][j][k] = 0;
+        dR_neigh[i][j][k][0] = 0.0;
+        dR_neigh[i][j][k][1] = 0.0;
+        dR_neigh[i][j][k][2] = 0.0;
+      }
     }
+  }
 
   min_dR = 1000;
 

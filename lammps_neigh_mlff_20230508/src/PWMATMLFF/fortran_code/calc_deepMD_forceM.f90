@@ -61,6 +61,13 @@ module calc_deepMD
         Wij_em = ff(ff_idx)%dp_ff_Wij_em
         B_em = ff(ff_idx)%dp_ff_B_em
 
+<<<<<<< HEAD
+=======
+        ! write(*, *) 'Embedding net layers: ', nlayer_em               ! 3
+        ! write(*, *) 'Embedding net nodes: ', node_em(1:nlayer_em+1)   ! 1 25 25 25
+        ! write(*, *) 'Embedding net nodeMM: ', nodeMM_em               ! 25
+
+>>>>>>> 997016ce (tmp version)
         ! ****************** fitting net ******************
         nlayer_NN = ff(ff_idx)%dp_ff_nlayer_NN
         node_nn(1:nlayer_NN+1) = ff(ff_idx)%dp_ff_node_nn(1:nlayer_NN+1)
@@ -72,6 +79,13 @@ module calc_deepMD
 
         Wij_NN = ff(ff_idx)%dp_ff_Wij_NN
         B_NN = ff(ff_idx)%dp_ff_B_NN
+<<<<<<< HEAD
+=======
+
+        ! write(*, *) 'Fitting net layers: ', nlayer_NN                 ! 4
+        ! write(*, *) 'Fitting net nodes: ', node_nn(1:nlayer_NN+1)     ! 400 50 50 50 1
+        ! write(*, *) 'Fitting net nodeMM: ', nodeMM_nn                 ! 400
+>>>>>>> 997016ce (tmp version)
         
         ! ****************** reconnect para ******************
         allocate(W_res_NN(nodeMM_nn,nlayer_NN+1,ntypes))
@@ -217,6 +231,10 @@ module calc_deepMD
         nodeMM_NN=0
         do ll=1,nlayer_NN+1
           if(node_NN(ll).gt.nodeMM_NN) nodeMM_NN=node_NN(ll)
+<<<<<<< HEAD
+=======
+          ! write(*,*) "nodeMM_NN", nodeMM_NN     ! 16*25
+>>>>>>> 997016ce (tmp version)
         enddo
         
         allocate(f_in(nodeMM_em,jjm,nlayer_em+1))
@@ -311,10 +329,26 @@ module calc_deepMD
                 do i=1,num
                   do j=1,node_em(ll)
                     f_out(j,i,ll+1)=f_out(j,i,ll+1)+f_out(j,i,ll)
+<<<<<<< HEAD
+=======
+                    ! write(*,*) 'f_out(j,i,ll+1)',i, j, f_out(j,i,ll+1) ! 10 * 3 * 25 * 16
+>>>>>>> 997016ce (tmp version)
                   enddo
                 enddo
               endif
             enddo ! ll end
+<<<<<<< HEAD
+=======
+            
+            ! embeding input
+            ! write(*,*) 'itype1', itype1
+            ! write(*,*) 'itype2', itype2
+            ! do i=1,num
+            !   write(*,*) 'f_out',i
+            !   write(*,*) ,f_out(:,i,1) 
+            ! enddo
+
+>>>>>>> 997016ce (tmp version)
                 
                
             ! *************************************************
@@ -341,7 +375,10 @@ module calc_deepMD
                     ss(m,k,i)=ss(m,k,i)+dxyz_neigh(m,j,itype2,iat)*f_out(k,jj,nlayer_em+1)*fact1
 
                     d_ss_fout(m,k,j,itype2,i)=d_ss_fout(m,k,j,itype2,i)+dxyz_neigh(m,j,itype2,iat)*fact1
+<<<<<<< HEAD
                         
+=======
+>>>>>>> 997016ce (tmp version)
                     !if(j.ne.num_neigh(itype2,iat)+neigh_add) then
                     ! 2023.3 altered 
                     if(j.ne.num_neigh(itype2,iat)+1) then
@@ -353,7 +390,11 @@ module calc_deepMD
                         ! d_ss_fout is to take the derivative with respect to f_out (only s_neigh, thus
                         ! f_out is changing.  
                       enddo
+<<<<<<< HEAD
                     endif
+=======
+                    endif                    
+>>>>>>> 997016ce (tmp version)
                   enddo
                 enddo
               enddo ! j end
@@ -392,9 +433,16 @@ module calc_deepMD
           ! f_in_NN(nodeMM_NN,natom_m_type,nlayer_NN+1) 
           ! dim: (max node dim, max natoms in all types, nlayer + 1)
           
+<<<<<<< HEAD
           !write(*,*) "printing dbg info: fitting net input"
           !write(*,*) "type", itype1
           !write(*,*) f_in_NN(1:50,1,1)
+=======
+          ! write(*,*) "printing dbg info: fitting net input"
+          ! write(*,*) "type", itype1
+          ! write(*,*) "num", num
+          ! write(*,*) f_in_NN(1:50,1,1)
+>>>>>>> 997016ce (tmp version)
           
           ! *******************************************
           !    propogation through the fitting net 
