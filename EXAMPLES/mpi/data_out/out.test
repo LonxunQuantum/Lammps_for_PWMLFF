@@ -4,7 +4,7 @@ Reading data file ...
   2 by 2 by 2 MPI processor grid
   reading atoms ...
   72 atoms
-  read_data CPU = 0.005 seconds
+  read_data CPU = 0.029 seconds
 
 Start loading force field: 
 
@@ -681,20 +681,35 @@ Per MPI rank memory allocation (min/avg/max) = 3.739 | 3.739 | 3.739 Mbytes
        615  -12560.494      10.557984     -12549.936      1150.4242      1334.04        65.614839    
        616  -12560.395      10.43532      -12549.96       1137.0584      1334.3427      563.01851    
        617  -12560.292      10.309261     -12549.982      1123.3228      1334.6759      1074.874     
+<<<<<<< HEAD
 Loop time of 20.7098 on 8 procs for 617 steps with 72 atoms
 
 Performance: 2.574 ns/day, 9.324 hours/ns, 29.793 timesteps/s, 2.145 katom-step/s
+=======
+Loop time of 24.2785 on 8 procs for 617 steps with 72 atoms
+
+Performance: 2.196 ns/day, 10.930 hours/ns, 25.413 timesteps/s, 1.830 katom-step/s
+>>>>>>> 997016ce (tmp version)
 99.5% CPU use with 8 MPI tasks x no OpenMP threads
 
 MPI task timing breakdown:
 Section |  min time  |  avg time  |  max time  |%varavg| %total
 ---------------------------------------------------------------
+<<<<<<< HEAD
 Pair    | 20.519     | 20.523     | 20.551     |   0.2 | 99.10
 Neigh   | 0.0023723  | 0.0025542  | 0.0027079  |   0.2 |  0.01
 Comm    | 0.020203   | 0.047959   | 0.052223   |   4.8 |  0.23
 Output  | 0.061508   | 0.067117   | 0.10595    |   5.7 |  0.32
 Modify  | 0.028635   | 0.067651   | 0.073344   |   5.7 |  0.33
 Other   |            | 0.001519   |            |       |  0.01
+=======
+Pair    | 23.909     | 23.931     | 24.083     |   1.2 | 98.57
+Neigh   | 0.0022428  | 0.0024768  | 0.002702   |   0.3 |  0.01
+Comm    | 0.01904    | 0.17099    | 0.1931     |  13.9 |  0.70
+Output  | 0.053291   | 0.066491   | 0.15835    |  13.5 |  0.27
+Modify  | 0.014053   | 0.10587    | 0.11913    |  10.7 |  0.44
+Other   |            | 0.001671   |            |       |  0.01
+>>>>>>> 997016ce (tmp version)
 
 Nlocal:              9 ave          11 max           6 min
 Histogram: 1 0 0 0 1 0 3 0 2 1
@@ -717,4 +732,8 @@ Dangerous builds not checked
 !!!Force field memory released
 !!!Releasing force field memory       4
 !!!Force field memory released
+<<<<<<< HEAD
 Total wall time: 0:00:21
+=======
+Total wall time: 0:00:24
+>>>>>>> 997016ce (tmp version)

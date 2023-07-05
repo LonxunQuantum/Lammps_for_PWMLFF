@@ -12,7 +12,7 @@ module load intel/2020
 #module load mkl/2022.0.2
 #module load mpi/2021.5.1
 
-  exe_dir="/data/home/sqjiang/sqjiang/coworker_dir/gitee/lammps_neigh_mlff_20230508/src"
+  exe_dir="/data/home/hfhuang/software/Lammps_for_PWMLFF-master/lammps_neigh_mlff_20230508/src"
   input="lammps.in"
   fid="test"
  

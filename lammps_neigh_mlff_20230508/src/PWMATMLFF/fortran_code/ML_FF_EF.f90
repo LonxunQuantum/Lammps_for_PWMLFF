@@ -13,21 +13,21 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,Etot,fatom,virial)
         real*8, dimension(6), intent(out) :: virial
         integer :: i, j, t
 
-        !write(*,*) "address 2 ", LOC(num_neigh)    
-        !write(*,*) "address 2 ", LOC(list_neigh)    
+        ! write(*,*) "address 2 ", LOC(num_neigh)    
+        ! write(*,*) "address 2 ", LOC(list_neigh)    
 
-        !write(*,*) " --- ML CHECK --- "
-        !write(*,*) "iflag ", iflag_model, m_neigh
-        !write(*,*) "ntypes ", ntypes, natoms
-        !do i = 1, natoms
-        !  write(*,*) i
+        ! write(*,*) " --- ML CHECK --- "
+        ! write(*,*) "iflag ", iflag_model, m_neigh
+        ! write(*,*) "ntypes ", ntypes, natoms
+        ! do i = 1, natoms
+        !  write(*,*) "natom ", i
         !  do t = 1, ntypes
         !    write(*,*) " ", t, num_neigh(t,i)
-        !    do j = 1, 6
-        !      write(*,*) " l ", list_neigh(j,t,i), dR_neigh(1,j,t,i)
+        !    do j = 1, m_neigh
+        !      write(*,"('     ', A, 1(I10, 1X), 3(F12.6, 3X))") " l ", list_neigh(j,t,i), dR_neigh(1,j,t,i), dR_neigh(2,j,t,i), dR_neigh(3,j,t,i)
         !    enddo
         !  enddo
-        !enddo
+        ! enddo
 
         ! ***************************************
         !              inference

@@ -130,8 +130,32 @@ module calc_deepMD_f
                 enddo
               enddo
             enddo ! j end
+
+              do j=num_neigh(itype,iat),m_neigh-1
+                dxyz_neigh(1,j+1,itype,iat)=(0.d0-ave_shift(1,itype1))/ave_norm(1,itype1)                     
+                dxyz_neigh(2,j+1,itype,iat)=(0.d0-ave_shift(2,itype1))/ave_norm(2,itype1)
+                dxyz_neigh(3,j+1,itype,iat)=(0.d0-ave_shift(3,itype1))/ave_norm(3,itype1)
+                dxyz_neigh(4,j+1,itype,iat)=(0.d0-ave_shift(4,itype1))/ave_norm(4,itype1)
+
+                s_neigh(j+1,itype,iat)=dxyz_neigh(1,j+1,itype,iat)
+              enddo ! j end
+            
           enddo ! itype end
         enddo ! iat end
+
+        ! interface to python Ri
+        ! do iat=1,natoms
+        !   itype1=catype(iat)  ! center atom type
+        !   write(*,"(A, 1(I3, 1X))") "natom", iat
+        !   do itype=1,ntypes
+        !     do j=1,m_neigh
+        !       write(*,"(4(F12.6, 2X))") dxyz_neigh(1,j,itype,iat), &
+        !         dxyz_neigh(2,j,itype,iat), &
+        !         dxyz_neigh(3,j,itype,iat), &
+        !         dxyz_neigh(4,j,itype,iat)
+        !     enddo
+        !   enddo
+        ! enddo
 
     end subroutine gen_deepMD_feature
 
