@@ -110,12 +110,6 @@ subroutine f2c_calc_energy_force(i_model_lvn, &
     f_atom_out(1:3,1:nall) = -1.0*f_atom_out(1:3,1:nall)
     virial_out(1:6) = -1.0*virial_out(1:6)
 
-<<<<<<< HEAD
-=======
-    ! write(*,*) " inum_neigh ", inum_neigh
-    ! write(*,*) " ilist_neigh ", ilist_neigh
-    ! write(*,*) " idR_neigh ", idR_neigh
->>>>>>> 997016ce (tmp version)
 end
 
 
