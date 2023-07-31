@@ -17,19 +17,19 @@
 #include "neigh_request.h"
 #include "neighbor.h"
 //#include "respa.h"
-#include "update.h"
 #include "domain.h"
+#include "update.h"
 
 #include <cmath>
 #include <cstring>
 // tmp
+#include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <iostream>
-#include <unordered_map>
-#include <string>
-#include <algorithm>
 #include <random>
-#include <chrono>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 using namespace LAMMPS_NS;
@@ -38,85 +38,77 @@ using namespace std;
 
 // declration of f2c!
 
-extern "C"
-{
-    void f2c_calc_energy_force( int* /*imodel*/,
-                                int* /*nlocal*/,
-                                int* /*nlocal + nghost*/,
-                                int* /*ntypes*/,
-                                int* /*type*/,
-                                int* /*itype*/,
-                                int* /*num_neigh*/,
-                                int* /*list_neigh*/,
-                                double* /*dR_neigh*/,
-                                double* /*e_atom*/,
-                                double* /*e_tot*/,
-                                double* /*f*/,
-                                double* /*virial*/,
-                                int* /*ff_idx*/);
-    // ff data loading
-    void dp_ff_load(char* /*file name*/ ,
-                    int* /*ff index */,
-                    int* /*file name length*/,
-                    double* /*neighbor cutoff*/);
+extern "C" {
+void f2c_calc_energy_force(int * /*imodel*/, int * /*nlocal*/, int * /*nlocal + nghost*/,
+                           int * /*ntypes*/, int * /*type*/, int * /*itype*/, int * /*num_neigh*/,
+                           int * /*list_neigh*/, double * /*dR_neigh*/, double * /*e_atom*/,
+                           double * /*e_tot*/, double * /*f*/, double * /*virial*/,
+                           int * /*ff_idx*/);
+// ff data loading
+void dp_ff_load(char * /*file name*/, int * /*ff index */, int * /*file name length*/,
+                double * /*neighbor cutoff*/);
 
-    // ff data destroy
-    // pointer of the name string
-    void dp_ff_deallocate(int* );
+void li_ff12_load(char * /*file name*/, int * /*ff index */, int * /*file name length*/,
+                  double * /*neighbor cutoff*/);
+
+// ff data destroy
+// pointer of the name string
+void dp_ff_deallocate(int *);
+void li_ff_deallocate(int *);
 }
 
 PairPWMATMLFF::PairPWMATMLFF(LAMMPS *lmp) : Pair(lmp)
 {
-    nmax = 0;
-    me = comm->me;
-    comm_reverse = 3;
-    writedata = 1;
+  nmax = 0;
+  me = comm->me;
+  comm_reverse = 3;
+  writedata = 1;
 
-    imodel = 0;
-    num_fail = 0;
-    num_cand = 0;
-    num_success = 0;    
-    fail_err = 0.25;
-    candidate_err = 0.05;
+  imodel = 0;
+  num_fail = 0;
+  num_cand = 0;
+  num_success = 0;
+  fail_err = 0.25;
+  candidate_err = 0.05;
 
-    old_timestep = -1;
-    min_dR = 1000;
+  old_timestep = -1;
+  min_dR = 1000;
 
-    seed = 1745294809;
+  seed = 1745294809;
 
-    if (me == 0) {
-      explrError_fname = "explr.error";
-      explrError_fp = fopen(&explrError_fname[0], "w");
-    }
-
+  if (me == 0) {
+    explrError_fname = "explr.error";
+    explrError_fp = fopen(&explrError_fname[0], "w");
+  }
 }
 
 PairPWMATMLFF::~PairPWMATMLFF()
 {
-    if (copymode) return;
+  if (copymode) return;
 
-    if (allocated) {
-      memory->destroy(setflag);
-      memory->destroy(cut);
-      memory->destroy(cutsq);
-      memory->destroy(e_atom);
-      memory->destroy(num_neigh);
-      memory->destroy(list_neigh);
-      memory->destroy(dR_neigh);
+  if (allocated) {
+    memory->destroy(setflag);
+    memory->destroy(cut);
+    memory->destroy(cutsq);
+    memory->destroy(e_atom);
+    memory->destroy(num_neigh);
+    memory->destroy(list_neigh);
+    memory->destroy(dR_neigh);
 
-      memory->destroy(itype_atom);
-      memory->destroy(e_atom_n);
-      memory->destroy(f_n);
-    }
+    memory->destroy(itype_atom);
+    memory->destroy(e_atom_n);
+    memory->destroy(f_n);
+  }
 
-    // ff paras memory 
-    for (int ff_idx = 1; ff_idx <= num_ff; ff_idx ++) {
-      if (me == 0) printf("!!!Releasing force field memory %7d\n", ff_idx);
-      dp_ff_deallocate(&ff_idx);
-      if (me == 0) printf("!!!Force field memory released\n");
-    }
+  // ff paras memory
+  for (int ff_idx = 1; ff_idx <= num_ff; ff_idx++) {
+    if (me == 0) printf("!!!Releasing force field memory %7d\n", ff_idx);
+    if (imodel == 1) li_ff_deallocate(&ff_idx);
+    if (imodel == 5) dp_ff_deallocate(&ff_idx);
+    if (me == 0) printf("!!!Force field memory released\n");
+  }
 
-    if (me == 0) fclose(explrError_fp);
+  if (me == 0) fclose(explrError_fp);
 }
 
 void PairPWMATMLFF::compute(int eflag, int vflag)
@@ -128,15 +120,15 @@ void PairPWMATMLFF::compute(int eflag, int vflag)
   double e_tot, e_tot_tmp;
   double virial_tmp[6];
 
-  double* h = domain->h;
-  double** x = atom->x;
-  double** f = atom->f;
-  int* type = atom->type;
-  int* tag = atom->tag;
+  double *h = domain->h;
+  double **x = atom->x;
+  double **f = atom->f;
+  int *type = atom->type;
+  int *tag = atom->tag;
   int nlocal = atom->nlocal;
   int nall = nlocal + atom->nghost;
   int ntypes = atom->ntypes;
-  double* virial = force->pair->virial;
+  double *virial = force->pair->virial;
 
   current_timestep = update->ntimestep;
 
@@ -145,17 +137,17 @@ void PairPWMATMLFF::compute(int eflag, int vflag)
   ev_init(eflag, vflag);
 
   // get lattice
-  lattice[0] = h[0];   // xx
-  lattice[4] = h[1];   // yy
-  lattice[8] = h[2];   // zz
-  lattice[7] = h[3];   // yz
-  lattice[6] = h[4];   // xz
-  lattice[3] = h[5];   // xy
+  lattice[0] = h[0];    // xx
+  lattice[4] = h[1];    // yy
+  lattice[8] = h[2];    // zz
+  lattice[7] = h[3];    // yz
+  lattice[6] = h[4];    // xz
+  lattice[3] = h[5];    // xy
 
   for (i = 0; i < nall; i++) {
     // atom->type starts from 1,
     // and type_map index starts from 0;
-    itype_atom[i] = type_map[type[i]-1];
+    itype_atom[i] = type_map[type[i] - 1];
   }
 
   generate_neighdata();
@@ -170,27 +162,15 @@ void PairPWMATMLFF::compute(int eflag, int vflag)
   for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
     // fortran index is start from 1.
     tff_idx = ff_idx + 1;
-    f2c_calc_energy_force(&imodel,
-                          &nlocal,
-                          &nall,
-                          &ntypes,
-                          &type[0],
-                          &itype_atom[0],
-                          &num_neigh[0][0],
-                          &list_neigh[0][0][0],
-                          &dR_neigh[0][0][0][0],
-                          &e_atom_n[ff_idx][0],
-                          &e_tot_tmp,
-                          &f_n[ff_idx][0][0],
-                          &virial_tmp[0],
+    f2c_calc_energy_force(&imodel, &nlocal, &nall, &ntypes, &type[0], &itype_atom[0],
+                          &num_neigh[0][0], &list_neigh[0][0][0], &dR_neigh[0][0][0][0],
+                          &e_atom_n[ff_idx][0], &e_tot_tmp, &f_n[ff_idx][0][0], &virial_tmp[0],
                           &tff_idx);
     if (ff_idx == 0) {
       e_tot = e_tot_tmp;
-      for (i=0; i<nall; i++)
-        for (j=0; j<3; j++)
-          f[i][j] = f_n[ff_idx][i][j];
-      for (j=0; j<6; j++)
-        virial[j] = virial_tmp[j];
+      for (i = 0; i < nall; i++)
+        for (j = 0; j < 3; j++) f[i][j] = f_n[ff_idx][i][j];
+      for (j = 0; j < 6; j++) virial[j] = virial_tmp[j];
     }
   }
 
@@ -205,7 +185,7 @@ void PairPWMATMLFF::compute(int eflag, int vflag)
     // calculate model deviation with Force
     max_err = calc_max_f_err(f_n);
 
-    MPI_Allreduce(&max_err,&global_max_err,1,MPI_DOUBLE,MPI_MAX,world);
+    MPI_Allreduce(&max_err, &global_max_err, 1, MPI_DOUBLE, MPI_MAX, world);
 
     max_err_list.push_back(global_max_err);
 
@@ -220,8 +200,7 @@ void PairPWMATMLFF::compute(int eflag, int vflag)
     //$      global_max_err < fail_err) &&
     //$     ((current_timestep - old_timestep) > 50)  ) {
     //$  old_timestep = current_timestep;
-    if ( (candidate_err < global_max_err) &&
-         (global_max_err < fail_err) ) {
+    if ((candidate_err < global_max_err) && (global_max_err < fail_err)) {
       num_cand++;
       atom_config tmp(nlocal);
 
@@ -235,156 +214,143 @@ void PairPWMATMLFF::compute(int eflag, int vflag)
     } else if (max_err > fail_err) {
       num_fail++;
     } else if (max_err < candidate_err) {
-      num_success++; 
+      num_success++;
     }
   }
 
   // potential energy
-  if (eflag_global)
-    eng_vdwl += e_tot;
+  if (eflag_global) eng_vdwl += e_tot;
 
-  if (update->ntimestep == update->laststep)
-    write_info(); 
+  if (update->ntimestep == update->laststep) write_info();
 }
 
 void PairPWMATMLFF::allocate()
 {
-    allocated = 1;
+  allocated = 1;
 
-    int ntypes = atom->ntypes;
-    int natoms = atom->natoms;
-    int n = ntypes + 1;
+  int ntypes = atom->ntypes;
+  int natoms = atom->natoms;
+  int n = ntypes + 1;
 
-    memory->create(setflag, n, n, "pair_pwmatmlff:setflag");
+  memory->create(setflag, n, n, "pair_pwmatmlff:setflag");
 
-    for (int i = 1; i < n; i++)
-        for (int j = i; j < n; j++)
-            setflag[i][j] = 0;
+  for (int i = 1; i < n; i++)
+    for (int j = i; j < n; j++) setflag[i][j] = 0;
 
-    memory->create(cut,n,n,"pair_pwmatmlff:cut");
-    memory->create(cutsq,n,n,"pair_pwmatmlff:cutsq");
+  memory->create(cut, n, n, "pair_pwmatmlff:cut");
+  memory->create(cutsq, n, n, "pair_pwmatmlff:cutsq");
 
-    memory->create(e_atom, natoms, "pair_pwmatmlff:e_atom");
+  memory->create(e_atom, natoms, "pair_pwmatmlff:e_atom");
 
-    memory->create(num_neigh, natoms, ntypes, "pair_pwmatmlff:num_neigh");
-    memory->create(list_neigh, natoms, ntypes, 100, "pair_pwmatmlff:list_neigh");
-    memory->create(dR_neigh, natoms, ntypes, 100, 3, "pair_pwmatmlff:dR_neigh");
+  memory->create(num_neigh, natoms, ntypes, "pair_pwmatmlff:num_neigh");
+  memory->create(list_neigh, natoms, ntypes, 100, "pair_pwmatmlff:list_neigh");
+  memory->create(dR_neigh, natoms, ntypes, 100, 3, "pair_pwmatmlff:dR_neigh");
 
-    atom_config_list.reserve(500);
-    config_id.reserve(500);
-
+  atom_config_list.reserve(500);
+  config_id.reserve(500);
 }
 
 // useless but we need it present
-void PairPWMATMLFF::settings(int narg, char** arg)
+void PairPWMATMLFF::settings(int narg, char **arg) {}
+
+void PairPWMATMLFF::coeff(int narg, char **arg)
 {
-}
+  if (!allocated) allocate();
 
-void PairPWMATMLFF::coeff(int narg, char** arg)
-{
-    if (!allocated) allocate();
+  int i;
+  int ff_idx, tff_idx;
+  int name_len;
+  int ntypes = atom->ntypes;
+  double temp_cut;
 
-    int i;
-    int ff_idx, tff_idx;
-    int name_len;
-    int ntypes = atom->ntypes;
-    double temp_cut;
+  temp_cut = 0.0;
 
-    temp_cut = 0.0;
+  // read in nn model type and nn model number
+  imodel = utils::inumeric(FLERR, arg[2], false, lmp);
 
-    // read in nn model type and nn model number
-    imodel = utils::inumeric(FLERR, arg[2], false, lmp);
+  // if (imodel != 5)
+  //   error->all(FLERR, "pair_pwmatmlff only support imodel=5");
 
-    if (imodel != 5)
-      error->all(FLERR, "pair_pwmatmlff only support imodel=5");
+  num_ff = utils::inumeric(FLERR, arg[3], false, lmp);
 
-    num_ff = utils::inumeric(FLERR, arg[3], false, lmp);
-
-    if ( ((num_ff == 1) && (narg < (2+2+num_ff+ntypes))) ) {
-       error->all(FLERR, "pair_coeff error:\
+  if (((num_ff == 1) && (narg < (2 + 2 + num_ff + ntypes)))) {
+    error->all(FLERR, "pair_coeff error:\
          * * imodel num_mlff 1.ff 2.ff ... \
              elem1 elem2 ... cut1 cut2 ...");
-    } else if ( ((num_ff > 1) && (narg != (2+2+num_ff+ntypes+2))) ) {
-       error->all(FLERR, "pair_coeff error:\
+  } else if (((num_ff > 1) && (narg != (2 + 2 + num_ff + ntypes + 2)))) {
+    error->all(FLERR, "pair_coeff error:\
          * * imodel num_mlff 1.ff 2.ff ... \
              elem1 elem2 ... \
              fail_err candidate_err");
-    }
-  
-    // read in nn model file name
-    for (ff_idx=0; ff_idx<num_ff; ff_idx++) {
+  }
 
-      name_len=0; 
-      for (i=0; i<500; i++) {
-        if (arg[2+2+ff_idx][i] == '\0')
-          break; 
-        name_len++; 
-      }
+  // read in nn model file name
+  for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
 
-      if (comm->me == 0)
-        printf("\nStart loading force field: \n\n%s %d\n\n", \
-          arg[2+2+ff_idx], name_len);
-
-      // fortran index is start from 1
-      tff_idx = ff_idx + 1;
-      dp_ff_load(arg[2+2+ff_idx], &tff_idx, &name_len, &temp_cut);
-
-      if (comm->me == 0)
-        printf("Force field loaded successfully\n\n");
+    name_len = 0;
+    for (i = 0; i < 500; i++) {
+      if (arg[2 + 2 + ff_idx][i] == '\0') break;
+      name_len++;
     }
 
-    // read in periodic table index of each atom type
-    for (int i = 0; i < ntypes; i++)
-      type_map[i] = utils::inumeric(FLERR, arg[i+2+2+num_ff], false, lmp);
+    if (comm->me == 0)
+      printf("\nStart loading force field: \n\n%s %d\n\n", arg[2 + 2 + ff_idx], name_len);
 
-    // read in the neighbor cutoff for each atom type
-    for (int i = 1; i <= ntypes; i++) {
-      setflag[i][i] = 1;
-      cut[i][i] = temp_cut; 
-    }
+    // fortran index is start from 1
+    tff_idx = ff_idx + 1;
+    if (imodel == 1) li_ff12_load(arg[2 + 2 + ff_idx], &tff_idx, &name_len, &temp_cut);
+    if (imodel == 5) dp_ff_load(arg[2 + 2 + ff_idx], &tff_idx, &name_len, &temp_cut);
 
-    // read in candidate error and fail error
-    if (narg == (2+2+num_ff+ntypes+2)) {
-      candidate_err = utils::numeric(FLERR, arg[narg-2], false, lmp);
-      fail_err = utils::numeric(FLERR, arg[narg-1], false, lmp);
-    }
+    if (comm->me == 0) printf("Force field loaded successfully\n\n");
+  }
 
-    // since we need num_ff, so well allocate memory here
-    // but not in allocate()
-    nmax = atom->nmax;
-    memory->create(f_n, num_ff, nmax, 3, "pair_pwmatmlff:f_n");
-    memory->create(e_atom_n, num_ff, atom->natoms, "pair_pwmatmlff:e_atom_n");
-    memory->create(itype_atom, nmax, "pair_pwmatmlff:itype_atom");
+  // read in periodic table index of each atom type
+  for (int i = 0; i < ntypes; i++)
+    type_map[i] = utils::inumeric(FLERR, arg[i + 2 + 2 + num_ff], false, lmp);
 
-    // print information for check
-    if (comm->me == 0) {
-      printf("\n\n --- Read in pair Coeff --- \n\n");
-      printf("  imodel %9d\n", imodel);
-      printf("  num_ff %9d\n", num_ff);
-      printf("  atom type ");
-      for (int i=0; i< ntypes; i++)
-        printf(" %5d", type_map[i]);
+  // read in the neighbor cutoff for each atom type
+  for (int i = 1; i <= ntypes; i++) {
+    setflag[i][i] = 1;
+    cut[i][i] = temp_cut;
+  }
 
-      printf("\n  atom cut ");
-      for (int i=1; i<=ntypes; i++)
-        printf(" %12.6f", cut[i][i]);
-      printf("\n\n --- Read in pair Coeff end --- \n\n");
-    }
+  // read in candidate error and fail error
+  if (narg == (2 + 2 + num_ff + ntypes + 2)) {
+    candidate_err = utils::numeric(FLERR, arg[narg - 2], false, lmp);
+    fail_err = utils::numeric(FLERR, arg[narg - 1], false, lmp);
+  }
+
+  // since we need num_ff, so well allocate memory here
+  // but not in allocate()
+  nmax = atom->nmax;
+  memory->create(f_n, num_ff, nmax, 3, "pair_pwmatmlff:f_n");
+  memory->create(e_atom_n, num_ff, atom->natoms, "pair_pwmatmlff:e_atom_n");
+  memory->create(itype_atom, nmax, "pair_pwmatmlff:itype_atom");
+
+  // print information for check
+  if (comm->me == 0) {
+    printf("\n\n --- Read in pair Coeff --- \n\n");
+    printf("  imodel %9d\n", imodel);
+    printf("  num_ff %9d\n", num_ff);
+    printf("  atom type ");
+    for (int i = 0; i < ntypes; i++) printf(" %5d", type_map[i]);
+
+    printf("\n  atom cut ");
+    for (int i = 1; i <= ntypes; i++) printf(" %12.6f", cut[i][i]);
+    printf("\n\n --- Read in pair Coeff end --- \n\n");
+  }
 }
 
 void PairPWMATMLFF::init_style()
 {
-  if (force->newton_pair == 0)
-    error->all(FLERR, "Pair style PWMATMLFF requires newon pair on");
+  if (force->newton_pair == 0) error->all(FLERR, "Pair style PWMATMLFF requires newon pair on");
 
   neighbor->add_request(this, NeighConst::REQ_FULL);
 }
 
-double  PairPWMATMLFF::init_one(int i, int j)
+double PairPWMATMLFF::init_one(int i, int j)
 {
-  if (setflag[i][j] == 0) {
-    cut[i][j] = mix_distance(cut[i][i],cut[j][j]);
-  }
+  if (setflag[i][j] == 0) { cut[i][j] = mix_distance(cut[i][i], cut[j][j]); }
   return cut[i][j];
 }
 
@@ -419,8 +385,7 @@ void PairPWMATMLFF::unpack_reverse_comm(int n, int *list, double *buf)
 void PairPWMATMLFF::grow_memory()
 {
   if (atom->nmax > nmax) {
-    printf("@@@ allocate new %7d %7d %7d\n",
-      update->ntimestep, nmax, atom->nmax);
+    printf("@@@ allocate new %7d %7d %7d\n", update->ntimestep, nmax, atom->nmax);
     nmax = atom->nmax;
     memory->grow(f_n, num_ff, nmax, 3, "pair_pwmatmlff:f_n");
     memory->grow(itype_atom, nmax, "pair_pwmatmlff:itype_atom");
@@ -434,13 +399,13 @@ void PairPWMATMLFF::generate_neighdata()
   int *ilist, *jlist, *numneigh, **firstneigh;
   int etnum;
 
-  double** x = atom->x;
+  double **x = atom->x;
   int *type = atom->type;
   int *tag = atom->tag;
   int nlocal = atom->nlocal;
   int ntypes = atom->ntypes;
- 
-  double min_dR_all; 
+
+  double min_dR_all;
 
   inum = list->inum;
   ilist = list->ilist;
@@ -476,27 +441,26 @@ void PairPWMATMLFF::generate_neighdata()
       delx = x[j][0] - xtmp;
       dely = x[j][1] - ytmp;
       delz = x[j][2] - ztmp;
-      rsq = delx*delx + dely*dely + delz*delz;
+      rsq = delx * delx + dely * dely + delz * delz;
       jtype = type[j];
 
       if (rsq < cutsq[itype][itype]) {
-        etnum = num_neigh[i][jtype-1];
-        dR_neigh[i][jtype-1][etnum][0] = delx;
-        dR_neigh[i][jtype-1][etnum][1] = dely;
-        dR_neigh[i][jtype-1][etnum][2] = delz;
+        etnum = num_neigh[i][jtype - 1];
+        dR_neigh[i][jtype - 1][etnum][0] = delx;
+        dR_neigh[i][jtype - 1][etnum][1] = dely;
+        dR_neigh[i][jtype - 1][etnum][2] = delz;
         // fortran start from 1
-        list_neigh[i][jtype-1][etnum] = j+1;
-        num_neigh[i][jtype-1] += 1;
+        list_neigh[i][jtype - 1][etnum] = j + 1;
+        num_neigh[i][jtype - 1] += 1;
         if (rsq < min_dR) min_dR = rsq;
       }
     }
   }
 
-  MPI_Allreduce(&min_dR,&min_dR_all,1,MPI_DOUBLE,MPI_MIN,world);
+  MPI_Allreduce(&min_dR, &min_dR_all, 1, MPI_DOUBLE, MPI_MIN, world);
 
   if (min_dR_all < 0.81) {
-    if (me == 0)
-      printf("@@@ there are two atom too close, min_dR_all = %12.6f\n", min_dR_all);
+    if (me == 0) printf("@@@ there are two atom too close, min_dR_all = %12.6f\n", min_dR_all);
     error->universe_all(FLERR, "@@@ pair_pwmatmlff min_dR_all.");
   }
 
@@ -512,72 +476,66 @@ void PairPWMATMLFF::generate_neighdata()
   //}
 }
 
-double PairPWMATMLFF::calc_max_f_err(double*** f_n)
+double PairPWMATMLFF::calc_max_f_err(double ***f_n)
 {
-    int i, j;
-    double max_err, err;
-    int ff_idx;
-    double num_ff_inv;
-    int nlocal = atom->nlocal;
+  int i, j;
+  double max_err, err;
+  int ff_idx;
+  double num_ff_inv;
+  int nlocal = atom->nlocal;
 
-    max_err = -1.0;
-    num_ff_inv = 1.0/num_ff;
+  max_err = -1.0;
+  num_ff_inv = 1.0 / num_ff;
 
-    for (ff_idx=0; ff_idx<num_ff; ff_idx++) {
-      // p_ff_idx is for reverse comm
-      p_ff_idx = ff_idx;
-      comm->reverse_comm(this);
+  for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
+    // p_ff_idx is for reverse comm
+    p_ff_idx = ff_idx;
+    comm->reverse_comm(this);
+  }
+
+  vector<double> f_ave;
+  vector<double> f_error[num_ff];
+
+  f_ave.resize(3 * nlocal);
+
+  for (i = 0; i < num_ff; i++) f_error[i].resize(3 * nlocal);
+
+  // sum over all models
+  for (ff_idx = 0; ff_idx < num_ff; ff_idx++)
+    for (i = 0; i < nlocal; i++)
+      for (j = 0; j < 3; j++) f_ave[i * 3 + j] += f_n[ff_idx][i][j];
+
+  // calc ensemble average
+  for (i = 0; i < 3 * nlocal; i++) f_ave[i] *= num_ff_inv;
+
+  // clac error
+  for (ff_idx = 0; ff_idx < num_ff; ff_idx++)
+    for (i = 0; i < nlocal; i++)
+      for (j = 0; j < 3; j++) f_error[ff_idx][i * 3 + j] = f_n[ff_idx][i][j] - f_ave[i * 3 + j];
+
+  // find max error
+  for (ff_idx = 0; ff_idx < num_ff; ff_idx++)
+    for (j = 0; j < 3 * nlocal; j += 3) {
+      err = f_error[ff_idx][j] * f_error[ff_idx][j] +
+          f_error[ff_idx][j + 1] * f_error[ff_idx][j + 1] +
+          f_error[ff_idx][j + 2] * f_error[ff_idx][j + 2];
+
+      err = sqrt(err);
+
+      if (err > max_err) max_err = err;
     }
 
-    vector<double> f_ave;
-    vector<double> f_error[num_ff];
-
-    f_ave.resize(3*nlocal);
-
-    for(i =0; i<num_ff; i++)
-      f_error[i].resize(3*nlocal);
-
-    // sum over all models
-    for (ff_idx = 0; ff_idx<num_ff; ff_idx++)
-      for (i=0; i<nlocal; i++)
-        for (j=0; j<3; j++)
-          f_ave[i*3+j] += f_n[ff_idx][i][j];
-
-    // calc ensemble average
-    for (i=0; i< 3*nlocal; i++)
-      f_ave[i] *= num_ff_inv;
-
-    // clac error
-    for (ff_idx = 0; ff_idx< num_ff; ff_idx++)
-      for (i=0; i<nlocal; i++)
-        for (j=0; j<3; j++)
-          f_error[ff_idx][i*3+j] = f_n[ff_idx][i][j] - f_ave[i*3+j];
-
-    // find max error
-    for (ff_idx = 0; ff_idx<num_ff; ff_idx++)
-      for(j=0; j<3*nlocal; j+=3) {
-        err = f_error[ff_idx][j]  *  f_error[ff_idx][j]
-            + f_error[ff_idx][j+1] * f_error[ff_idx][j+1]
-            + f_error[ff_idx][j+2] * f_error[ff_idx][j+2];
-
-        err = sqrt(err);
-
-        if (err > max_err)
-          max_err = err;
-      } 
-
-    return max_err;
+  return max_err;
 }
 
-void PairPWMATMLFF::write_config(
-  atom_config& config, int idx, int timestep)
+void PairPWMATMLFF::write_config(atom_config &config, int idx, int timestep)
 {
   MPI_Status status;
   MPI_Request request;
   int nprocs, iproc;
 
   FILE *fp;
-  double* buf;
+  double *buf;
   int maxbuf;
   int tmp, nlines;
   int nme, tnmax;
@@ -588,66 +546,64 @@ void PairPWMATMLFF::write_config(
   nprocs = comm->nprocs;
   nme = config.num_atom;
 
-  MPI_Allreduce(&nme,&tnmax,1,MPI_INT,MPI_MAX,world);
+  MPI_Allreduce(&nme, &tnmax, 1, MPI_INT, MPI_MAX, world);
 
-  memory->create(buf,tnmax*4,"pair_pwmatlff:write()");
+  memory->create(buf, tnmax * 4, "pair_pwmatlff:write()");
 
   string fname = "cand_" + to_string(idx) + ".config";
 
-  if (me == 0)
-    fp = fopen(&fname[0], "w"); 
+  if (me == 0) fp = fopen(&fname[0], "w");
 
   // write header
   if (me == 0) {
     //fprintf(fp,"%7d %9d\n", atom->natoms, timestep);
-    fprintf(fp,"%7d\n", atom->natoms);
-    fprintf(fp,"Lattice vector\n");
-    for (i=0; i<9; i++) {
-      fprintf(fp,"%16.9f ", config.lattice[i]);
-      if ((i+1) % 3 == 0)
-        fprintf(fp,"\n");
+    fprintf(fp, "%7d\n", atom->natoms);
+    fprintf(fp, "Lattice vector\n");
+    for (i = 0; i < 9; i++) {
+      fprintf(fp, "%16.9f ", config.lattice[i]);
+      if ((i + 1) % 3 == 0) fprintf(fp, "\n");
     }
-    fprintf(fp,"Position, move_x, move_y, move_z\n");
+    fprintf(fp, "Position, move_x, move_y, move_z\n");
   }
 
   // save data to buf
   m = 0;
-  for (i=0; i<nme; i++) {
+  for (i = 0; i < nme; i++) {
     buf[m++] = config.type[i];
-    buf[m++] = config.position[i*3];
-    buf[m++] = config.position[i*3+1];
-    buf[m++] = config.position[i*3+2];
+    buf[m++] = config.position[i * 3];
+    buf[m++] = config.position[i * 3 + 1];
+    buf[m++] = config.position[i * 3 + 2];
   }
 
   // write coordinate
   if (me == 0) {
-    for (iproc = 0; iproc<nprocs; iproc++) {
+    for (iproc = 0; iproc < nprocs; iproc++) {
       if (iproc) {
-        MPI_Irecv(buf,tnmax*4,MPI_DOUBLE,me+iproc,0,world,&request);
-        MPI_Send(&tmp,0,MPI_INT,me+iproc,0,world);
-        MPI_Wait(&request,&status);
-        MPI_Get_count(&status,MPI_DOUBLE,&nlines);
+        MPI_Irecv(buf, tnmax * 4, MPI_DOUBLE, me + iproc, 0, world, &request);
+        MPI_Send(&tmp, 0, MPI_INT, me + iproc, 0, world);
+        MPI_Wait(&request, &status);
+        MPI_Get_count(&status, MPI_DOUBLE, &nlines);
         nlines /= 4;
-      } else nlines = nme;
+      } else
+        nlines = nme;
 
       m = 0;
-      for (i=0; i<nlines; i++) {
-        fprintf(fp,"%7d %13.12f %13.12f %13.12f 1 1 1\n",
-         static_cast<int> (buf[m]), buf[m+1], buf[m+2], buf[m+3]);
+      for (i = 0; i < nlines; i++) {
+        fprintf(fp, "%7d %13.12f %13.12f %13.12f 1 1 1\n", static_cast<int>(buf[m]), buf[m + 1],
+                buf[m + 2], buf[m + 3]);
         m += 4;
       }
     }
     fflush(fp);
   } else {
-    MPI_Recv(&tmp,0,MPI_INT,0,0,world,MPI_STATUS_IGNORE);
-    MPI_Rsend(buf,nme*4,MPI_DOUBLE,0,0,world);
+    MPI_Recv(&tmp, 0, MPI_INT, 0, 0, world, MPI_STATUS_IGNORE);
+    MPI_Rsend(buf, nme * 4, MPI_DOUBLE, 0, 0, world);
   }
 
   if (me == 0) fclose(fp);
 
   memory->destroy(buf);
 }
-
 
 void PairPWMATMLFF::write_info()
 {
@@ -664,40 +620,33 @@ void PairPWMATMLFF::write_info()
       string fname = "explr.stat";
       fp = fopen(&fname[0], "w");
 
-      fprintf(fp,"num_succes num_cand num_fail\n");
-      fprintf(fp,"%9d %9d %9d \n",
-        num_success, num_cand, num_fail);
+      fprintf(fp, "num_succes num_cand num_fail\n");
+      fprintf(fp, "%9d %9d %9d \n", num_success, num_cand, num_fail);
       fclose(fp);
-
     }
 
     /* pick out 10 config for later selection */
-    num_select = MIN(10,num_cand);
+    num_select = MIN(10, num_cand);
 
-    if (num_select > 0 ) {
-      vector<int> idx(num_cand,0);
+    if (num_select > 0) {
+      vector<int> idx(num_cand, 0);
 
-      for (i=0; i<num_cand; i++)
-        idx[i] = i;
+      for (i = 0; i < num_cand; i++) idx[i] = i;
 
-      shuffle(idx.begin(),idx.end(), std::default_random_engine(seed));
+      shuffle(idx.begin(), idx.end(), std::default_random_engine(seed));
 
-      for(i=0; i< num_select; i++ ) {
+      for (i = 0; i < num_select; i++) {
         /*
             write candidates' configs
             RANDOMLY CHOOSE 10 CONFIGS
             do padding if num_cand < num_select
         */
-        if (i<num_cand) {
-          write_config(atom_config_list[idx[i]],i,config_id[idx[i]]);
+        if (i < num_cand) {
+          write_config(atom_config_list[idx[i]], i, config_id[idx[i]]);
         } else {
-          write_config(atom_config_list[idx[num_cand-1]],i,config_id[idx[num_cand-1]]);
+          write_config(atom_config_list[idx[num_cand - 1]], i, config_id[idx[num_cand - 1]]);
         }
       }
     }
   }
-
 }
-
-
-

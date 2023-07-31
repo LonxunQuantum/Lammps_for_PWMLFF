@@ -198,6 +198,9 @@ module calc_deepMD
           natom_n_type(itype) = natom_n_type(itype) + 1
           iat_ind(natom_n_type(itype),itype)=i
         enddo
+        ! write(*,*) "itype", itype
+        ! write(*,*) "natom_n_type", natom_n_type
+        ! write(*,*) "iat_ind", iat_ind
 
         ! the max total neighbor number of one type
         jjm=0

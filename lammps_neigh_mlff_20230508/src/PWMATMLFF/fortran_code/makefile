@@ -19,14 +19,16 @@ FLINKFLAG = -cxxlib -nofor_main
 #SRCS = $(wildcard *.f90)
 #OBJ = $(patsubst %.f90,%.o,$(SRCS))
 # priority-sensitive
-OBJ =   dp_ff_mod.o mod_matom.o mod_data.o \
-        gen_deepMD_feature.o calc_deepMD_forceM.o\
-        ML_FF_EF.o \
+OBJ =   dp_ff_mod.o li_ff_mod.o mod_matom.o mod_data.o \
+        gen_deepMD_feature.o calc_deepMD_forceM.o \
+        gen_2b_feature.o gen_3b_feature.o calc_lin_forceM.o \
+		find_feature_2b_type3.o find_feature_3b_type3.o \
+        mod_m_neigh.o ML_FF_EF.o \
         f2c_calc_energy_force.o  
 
 # priority-sensitive
-MODS = calc_deepmd_f.mod calc_deepMD.mod mod_data.mod mod_parameter.mod 
-
+MODS =	calc_deepmd_f.mod calc_deepMD.mod calc_ftype1.mod calc_ftype2.mod calc_lin.mod mod_data.mod mod_parameter.mod mod_m_neigh.mod
+	   
 %.o:  %.f90
 	$(MPIFC) $(FFLAG) -c $<
 %.o:  %.f
@@ -38,13 +40,22 @@ calc_deepMD.mod: calc_deepMD_forceM.f90
 	$(MPIFC) $(FFLAG) -c $^
 calc_deepMD_f.mod: gen_deepMD_feature.f90
 	$(MPIFC) $(FFLAG) -c $^
+calc_lin.mod: calc_lin_forceM.f90
+	$(MPIFC) $(FFLAG) -c $^
+calc_ftype1.mod: gen_2b_feature.f90
+	$(MPIFC) $(FFLAG) -c $^
+calc_ftype2.mod: gen_3b_feature.f90
+	$(MPIFC) $(FFLAG) -c $^
 mod_data.mod: mod_data.f90
 	$(MPIFC) $(FFLAG) -c $^
 mod_parameter.mod: mod_matom.f90
 	$(MPIFC) $(FFLAG) -c $^
+mod_parameter.mod: mod_m_neigh.f90
+	$(MPIFC) $(FFLAG) -c $^
 
 mods: mod_parameter.mod calc_deepMD.mod \
-      mod_data.mod mod_md.mod calc_deepmd_f.mod
+      mod_data.mod mod_m_neigh.mod mod_md.mod calc_deepmd_f.mod \
+      calc_ftype1.mod calc_ftype2.mod calc_lin.mod
 
 #mlff_predict.x: mods $(OBJ) mlff_predict.o
 #	make -C iotk

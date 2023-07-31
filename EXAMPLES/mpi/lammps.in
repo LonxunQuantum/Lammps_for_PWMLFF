@@ -13,4 +13,4 @@ fix             1 all npt temp 1200 1200 0.025 tri 1.0 1.0 0.1
 thermo_style    custom step pe ke etotal temp vol press
 thermo          1
 dump            1 all custom 1 traj id type x y z  vx vy vz fx fy fz
-run             617 
+run             10 
