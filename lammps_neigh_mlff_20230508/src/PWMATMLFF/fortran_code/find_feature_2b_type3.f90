@@ -23,15 +23,11 @@ subroutine find_feature_2b_type3(num_neigh,dR_neigh,m_neigh,list_neigh,&
    integer :: ind_all_neigh(m_neigh,ntypes,natoms),list_neigh_alltype(m_neigh,natoms)
 
    integer :: j,jj,num,itype,k
-   integer :: iat,iat1,iat2
+   integer :: iat,iat1
    real(8) :: d,dd
    real(8) :: pi,pi2,x,f1
    integer :: itype0
    real(8) :: y,y2
-
-
-   !  natom_n is natoms / n
-   ! WARNING: natom_n is 0 when not run under MPI!
 
    real(8) :: feat2(n2bm,ntypes,natoms)
    real(8) :: dfeat2(n2bm,ntypes,natoms,m_neigh,3)

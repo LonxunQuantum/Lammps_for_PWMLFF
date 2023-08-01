@@ -1,7 +1,7 @@
 module calc_lin
 
    use mod_data, only : natoms, nall, ntypes, catype, atype
-   use li_ff_mod, only : ff ! force field data
+   use ff_mod, only : ff ! force field data
    !implicit double precision (a-h, o-z)
    implicit none
 
@@ -49,7 +49,7 @@ contains
       integer :: ntmp,itmp,nterm
 
       ! ************************************
-      !         fetch li_mod data
+      !         fetch ff_mod data
       ! ************************************
       if (allocated(nfeat1)) deallocate(nfeat1)
       if (allocated(nfeat2)) deallocate(nfeat2)
@@ -83,16 +83,16 @@ contains
          enddo
       enddo
       ! **************** read feat.info ********************
-      m_neigh=ff(ff_idx)%li_ff_max_neigh
-      nfeat_type_l=ff(ff_idx)%li_ff_nfeat_type
+      m_neigh=ff(ff_idx)%ff_max_neigh
+      nfeat_type_l=ff(ff_idx)%ff_nfeat_type
       do kkk=1,nfeat_type_l
-         ifeat_type_l(kkk)=ff(ff_idx)%li_ff_ifeat_type(kkk)   ! the index (1,2,3) of the feature type
+         ifeat_type_l(kkk)=ff(ff_idx)%ff_ifeat_type(kkk)   ! the index (1,2,3) of the feature type
       enddo
-      ! ntype=ff(ff_idx)%li_ff_num_type
-      do i=1,ntypes   
-         iatom_tmp(i)=ff(ff_idx)%li_ff_itype_atom_sumfe(i,1)
-         nfeat1(i)=ff(ff_idx)%li_ff_itype_atom_sumfe(i,2) ! these nfeat1,nfeat2 include all ftype
-         nfeat2(i)=ff(ff_idx)%li_ff_itype_atom_sumfe(i,3)
+      ! ntype=ff(ff_idx)%ff_num_type
+      do i=1,ntypes
+         iatom_tmp(i)=ff(ff_idx)%ff_itype_atom_sumfe(i,1)
+         nfeat1(i)=ff(ff_idx)%ff_itype_atom_sumfe(i,2) ! these nfeat1,nfeat2 include all ftype
+         nfeat2(i)=ff(ff_idx)%ff_itype_atom_sumfe(i,3)
       enddo
 
       ! cccccccc Right now, nfeat1,nfeat2,for different types
@@ -149,8 +149,8 @@ contains
          enddo
       enddo
 
-      feat2_shift=ff(ff_idx)%li_ff_feat2_shift
-      feat2_scale=ff(ff_idx)%li_ff_feat2_scale
+      feat2_shift=ff(ff_idx)%ff_feat2_shift
+      feat2_scale=ff(ff_idx)%ff_feat2_scale
 
    end subroutine load_model_lin
 
@@ -303,7 +303,7 @@ contains
          iat1=iat1+1
          itype = catype(i)
          do jj = 1, num_neigh(i)
-         ! do jj = 1, num_neigh(itype,i)
+            ! do jj = 1, num_neigh(itype,i)
             num(itype) = num(itype) + 1
             dfeat_type(:, num(itype), itype) = dfeat(:, iat1, jj, 1)
             num(itype) = num(itype) + 1
@@ -327,7 +327,7 @@ contains
          iat1=iat1+1
          itype = catype(i)
          do jj = 1, num_neigh(i)
-         ! do jj = 1, num_neigh(itype,i)
+            ! do jj = 1, num_neigh(itype,i)
             ! itype=iatom_type(list_neigh(jj,i))  ! this is this neighbor's type
             num(itype) = num(itype) + 1
             do j = 1, nfeat2(itype) - 1
@@ -361,7 +361,7 @@ contains
          iat1=iat1+1
          itype = catype(i)
          do jj = 1, num_neigh(i)
-         ! do jj = 1, num_neigh(itype,i)
+            ! do jj = 1, num_neigh(itype,i)
             ! iat2=list_neigh(jj,itype,i)
             iat2=list_neigh(jj,i)
             do j = 1, nfeat2(itype)

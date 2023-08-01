@@ -3,7 +3,7 @@
 !**************************************************
 module calc_ftype2
 
-   use li_ff_mod, only: ff
+   use ff_mod, only: ff
 
    use mod_data, only : natoms, ntypes, catype
 
@@ -19,7 +19,7 @@ module calc_ftype2
 
    integer :: m_neigh,m_neigh2
    integer :: num,num_M,natom2
-   integer n3b1,n3b2,nfeat0m
+   integer :: n3b1,n3b2,nfeat0m
    integer :: nfeat0(100)       ! ?
    integer :: iat_type(100)
    integer :: iflag_grid,iflag_ftype,iflag_grid_type(100)
@@ -40,23 +40,23 @@ contains
       integer :: kkk,k1,k2,k12,ii_f
 
       ! gen_3b_feature.in
-      Rc_M=ff(ff_idx)%li_ff_Rc_M
-      do i=1,ff(ff_idx)%li_ff_num_type
-         iat_type(i)=ff(ff_idx)%li_ff_iat_type(i)
-         Rc_type(i)=ff(ff_idx)%li_ff_Rc_type(i)
-         Rc2_type(i)=ff(ff_idx)%li_ff_Rc2_type(i)
-         Rm_type(i)=ff(ff_idx)%li_ff_Rm_type(i)
-         iflag_grid_type(i)=ff(ff_idx)%li_ff_iflag_grid_type(i)
-         fact_grid_type(i)=ff(ff_idx)%li_ff_fact_grid_type(i)
-         dR_grid1_type(i)=ff(ff_idx)%li_ff_dR_grid1_type(i)
-         dR_grid2_type(i)=ff(ff_idx)%li_ff_dR_grid2_type(i)
-         n3b1_type(i)=ff(ff_idx)%li_ff_n3b1_type(i)
-         n3b2_type(i)=ff(ff_idx)%li_ff_n3b2_type(i)
+      Rc_M=ff(ff_idx)%ff_Rc_M
+      do i=1,ff(ff_idx)%ff_num_type
+         iat_type(i)=ff(ff_idx)%ff_iat_type(i)
+         Rc_type(i)=ff(ff_idx)%ff_Rc_type(i)
+         Rc2_type(i)=ff(ff_idx)%ff_Rc2_type(i)
+         Rm_type(i)=ff(ff_idx)%ff_Rm_type(i)
+         iflag_grid_type(i)=ff(ff_idx)%ff_iflag_grid_type(i)
+         fact_grid_type(i)=ff(ff_idx)%ff_fact_grid_type(i)
+         dR_grid1_type(i)=ff(ff_idx)%ff_dR_grid1_type(i)
+         dR_grid2_type(i)=ff(ff_idx)%ff_dR_grid2_type(i)
+         n3b1_type(i)=ff(ff_idx)%ff_n3b1_type(i)
+         n3b2_type(i)=ff(ff_idx)%ff_n3b2_type(i)
       enddo
 
-      E_tolerance=ff(ff_idx)%li_ff_E_tolerance
-      iflag_ftype=ff(ff_idx)%li_ff_iflag_ftype
-      recalc_grid=ff(ff_idx)%li_ff_recalc_grid
+      E_tolerance=ff(ff_idx)%ff_E_tolerance
+      iflag_ftype=ff(ff_idx)%ff_iflag_ftype
+      recalc_grid=ff(ff_idx)%ff_recalc_grid
 
       ! ccccccccccccccccccccccccccccccccccccccccccccccccc
       ! calculate features of all types
@@ -136,15 +136,15 @@ contains
             n3b1_t=ff(ff_idx)%n3b1_tmp
             do i=1,n3b1
                it=ff(ff_idx)%n3b1_tmp_idx
-               grid31_2(1,i,kkk)=ff(ff_idx)%li_ff_grid31_2(1,i,kkk)
-               grid31_2(2,i,kkk)=ff(ff_idx)%li_ff_grid31_2(2,i,kkk)
+               grid31_2(1,i,kkk)=ff(ff_idx)%ff_grid31_2(1,i,kkk)
+               grid31_2(2,i,kkk)=ff(ff_idx)%ff_grid31_2(2,i,kkk)
             enddo
 
             n3b2_t=ff(ff_idx)%n3b2_tmp
             do i=1,n3b2
                it=ff(ff_idx)%n3b2_tmp_idx
-               grid32_2(1,i,kkk)=ff(ff_idx)%li_ff_grid32_2(1,i,kkk)
-               grid32_2(2,i,kkk)=ff(ff_idx)%li_ff_grid32_2(2,i,kkk)
+               grid32_2(1,i,kkk)=ff(ff_idx)%ff_grid32_2(1,i,kkk)
+               grid32_2(2,i,kkk)=ff(ff_idx)%ff_grid32_2(2,i,kkk)
             enddo
 
          endif
@@ -158,7 +158,7 @@ contains
    subroutine set_image_info_type2(ff_idx)
       integer, intent(in) :: ff_idx
 
-      m_neigh=ff(ff_idx)%li_ff_max_neigh
+      m_neigh=ff(ff_idx)%ff_max_neigh
       m_neigh2=m_neigh
       natom2=natoms
 
@@ -258,7 +258,6 @@ contains
 
          num_neigh_alltype(iat)=num
          num_neigh_alltypeM2(iat)=num_M
-
          if(num.gt.max_neigh) max_neigh=num
          if(num_M.gt.max_neigh_M) max_neigh_M=num_M
       enddo ! iat=1,natoms

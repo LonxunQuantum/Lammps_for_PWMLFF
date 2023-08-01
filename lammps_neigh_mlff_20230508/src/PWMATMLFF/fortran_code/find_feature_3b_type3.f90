@@ -35,7 +35,7 @@ subroutine find_feature_3b_type3(num_neigh,dR_neigh,m_neigh,list_neigh,&
    real(8) :: d,dd
    real(8) :: pi,pi2,x,f1
    real(8) :: y,y2
-  
+
 
    num_neigh_alltype=0
 
@@ -64,8 +64,8 @@ subroutine find_feature_3b_type3(num_neigh,dR_neigh,m_neigh,list_neigh,&
    pi2=2*pi
    feat3=0.d0
    dfeat3=0.d0
-   iat1=0
 
+   iat1=0
    do iat=1,natoms
       iat1=iat1+1
       itype0=catype(iat)

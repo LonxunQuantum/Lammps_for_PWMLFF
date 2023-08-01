@@ -48,13 +48,13 @@ void f2c_calc_energy_force(int * /*imodel*/, int * /*nlocal*/, int * /*nlocal + 
 void dp_ff_load(char * /*file name*/, int * /*ff index */, int * /*file name length*/,
                 double * /*neighbor cutoff*/);
 
-void li_ff12_load(char * /*file name*/, int * /*ff index */, int * /*file name length*/,
+void ff_load(char * /*file name*/, int * /*ff index */, int * /*file name length*/,
                   double * /*neighbor cutoff*/);
 
 // ff data destroy
 // pointer of the name string
 void dp_ff_deallocate(int *);
-void li_ff_deallocate(int *);
+void ff_deallocate(int *);
 }
 
 PairPWMATMLFF::PairPWMATMLFF(LAMMPS *lmp) : Pair(lmp)
@@ -103,7 +103,7 @@ PairPWMATMLFF::~PairPWMATMLFF()
   // ff paras memory
   for (int ff_idx = 1; ff_idx <= num_ff; ff_idx++) {
     if (me == 0) printf("!!!Releasing force field memory %7d\n", ff_idx);
-    if (imodel == 1) li_ff_deallocate(&ff_idx);
+    if (imodel == 1) ff_deallocate(&ff_idx);
     if (imodel == 5) dp_ff_deallocate(&ff_idx);
     if (me == 0) printf("!!!Force field memory released\n");
   }
@@ -298,7 +298,7 @@ void PairPWMATMLFF::coeff(int narg, char **arg)
 
     // fortran index is start from 1
     tff_idx = ff_idx + 1;
-    if (imodel == 1) li_ff12_load(arg[2 + 2 + ff_idx], &tff_idx, &name_len, &temp_cut);
+    if (imodel == 1) ff_load(arg[2 + 2 + ff_idx], &tff_idx, &name_len, &temp_cut);
     if (imodel == 5) dp_ff_load(arg[2 + 2 + ff_idx], &tff_idx, &name_len, &temp_cut);
 
     if (comm->me == 0) printf("Force field loaded successfully\n\n");

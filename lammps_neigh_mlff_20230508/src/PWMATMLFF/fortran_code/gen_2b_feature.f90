@@ -2,25 +2,25 @@ module calc_ftype1
    ! ******************************************
    !      feature calc on a SINGLE core
    ! ******************************************
-   use li_ff_mod, only: ff
+   use ff_mod, only: ff
 
    use mod_data, only : natoms, ntypes, catype
 
    IMPLICIT NONE
    integer :: i,itype
    integer :: max_neigh,max_neigh_M
-   real(8) :: E_tolerance
    integer :: recalc_grid
-   real(8),allocatable,dimension (:,:,:) :: grid2_2
    integer :: n2b_t,it
+   integer :: iat_type(100)
    integer :: n2b_type(100),n2bm                              ! numOf2bfeat
    real(8) :: Rc_M
-   
+   real(8) :: E_tolerance
+   real(8),allocatable,dimension (:,:,:) :: grid2_2
+
    integer :: m_neigh,m_neigh1
    integer :: num,num_M,natom1
    integer :: n2b,nfeat0m
    integer :: nfeat0(100)       ! ?
-   integer :: iat_type(100)
    integer :: iflag_grid,iflag_ftype,iflag_grid_type(100)
    real(8) :: Rc_type(100),Rm_type(100),fact_grid_type(100),dR_grid1_type(100)
 
@@ -39,22 +39,22 @@ contains
       integer :: kkk
 
       ! gen_2b_feature.in
-      Rc_M=ff(ff_idx)%li_ff_Rc_M
-      ! m_neigh=ff(ff_idx)%li_ff_max_neigh
-      ! ntype=ff(ff_idx)%li_ff_num_type
-      do i=1,ff(ff_idx)%li_ff_num_type
-         iat_type(i)=ff(ff_idx)%li_ff_iat_type(i)
-         Rc_type(i)=ff(ff_idx)%li_ff_Rc_type(i)
-         Rm_type(i)=ff(ff_idx)%li_ff_Rm_type(i)
-         iflag_grid_type(i)=ff(ff_idx)%li_ff_iflag_grid_type(i)
-         fact_grid_type(i)=ff(ff_idx)%li_ff_fact_grid_type(i)
-         dR_grid1_type(i)=ff(ff_idx)%li_ff_dR_grid1_type(i)
-         n2b_type(i)=ff(ff_idx)%li_ff_n2b_type(i)
+      Rc_M=ff(ff_idx)%ff_Rc_M
+      ! m_neigh=ff(ff_idx)%ff_max_neigh
+      ! ntype=ff(ff_idx)%ff_num_type
+      do i=1,ff(ff_idx)%ff_num_type
+         iat_type(i)=ff(ff_idx)%ff_iat_type(i)
+         Rc_type(i)=ff(ff_idx)%ff_Rc_type(i)
+         Rm_type(i)=ff(ff_idx)%ff_Rm_type(i)
+         iflag_grid_type(i)=ff(ff_idx)%ff_iflag_grid_type(i)
+         fact_grid_type(i)=ff(ff_idx)%ff_fact_grid_type(i)
+         dR_grid1_type(i)=ff(ff_idx)%ff_dR_grid1_type(i)
+         n2b_type(i)=ff(ff_idx)%ff_n2b_type(i)
       enddo
 
-      E_tolerance=ff(ff_idx)%li_ff_E_tolerance
-      iflag_ftype=ff(ff_idx)%li_ff_iflag_ftype
-      recalc_grid=ff(ff_idx)%li_ff_recalc_grid
+      E_tolerance=ff(ff_idx)%ff_E_tolerance
+      iflag_ftype=ff(ff_idx)%ff_iflag_ftype
+      recalc_grid=ff(ff_idx)%ff_recalc_grid
 
       ! m_neigh1=m_neigh
       ! ccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -74,7 +74,7 @@ contains
       if (.not.allocated(grid2_2)) then
          allocate(grid2_2(2,n2bm+1,ntypes))
       endif
-      ! grid2_2=ff(ff_idx)%li_ff_grid2_2
+      ! grid2_2=ff(ff_idx)%ff_grid2_2
 
       do kkk=1,ntypes    ! center atom
          iflag_grid=iflag_grid_type(kkk)
@@ -85,8 +85,8 @@ contains
             n2b_t=ff(ff_idx)%n2b_tmp
             do i=1,n2b
                it=ff(ff_idx)%n2b_tmp_idx
-               grid2_2(1,i,kkk)=ff(ff_idx)%li_ff_grid2_2(1,i,kkk)
-               grid2_2(2,i,kkk)=ff(ff_idx)%li_ff_grid2_2(2,i,kkk)
+               grid2_2(1,i,kkk)=ff(ff_idx)%ff_grid2_2(1,i,kkk)
+               grid2_2(2,i,kkk)=ff(ff_idx)%ff_grid2_2(2,i,kkk)
             enddo
          endif
       enddo ! kkk=1,ntypes
@@ -98,10 +98,10 @@ contains
    subroutine set_image_info_type1(ff_idx)
       integer, intent(in) :: ff_idx
 
-      m_neigh=ff(ff_idx)%li_ff_max_neigh
+      m_neigh=ff(ff_idx)%ff_max_neigh
       m_neigh1=m_neigh
       natom1=natoms
-      
+
    end subroutine set_image_info_type1
 
    subroutine gen_feature_type1(num_neigh,list_neigh,dR_neigh)
@@ -109,8 +109,7 @@ contains
       integer, dimension(m_neigh,ntypes,natoms), intent(in) :: list_neigh
       real(8), dimension(3,m_neigh,ntypes,natoms), intent(in) :: dR_neigh
 
-      integer(4) :: j
-      integer :: ii,jj,jjm,iat,iat1
+      integer :: j,ii,jj,jjm,iat,iat1
 
       integer,allocatable,dimension (:,:) :: map2neigh_alltypeM      ! -->list_tmp
       integer,allocatable,dimension (:,:) :: list_tmp                ! -->num_M
@@ -222,7 +221,7 @@ contains
          !  iflag_ftype.eq.3, the sin peak span over the two ends specified by grid31_2,grid32_2
          !  So, there could be many overlaps between different sin peaks
          call find_feature_2b_type3(num_neigh,dR_neigh,m_neigh,list_neigh,&
-            n2b_type,n2bm,grid2_2,&
+            n2b_type,n2bm,grid2_2,Rc_type,&
             feat,dfeat,nfeat0m)
       endif
       !cccccccccccccccccccccccccccccccccccccccccccccccccccc
@@ -247,6 +246,7 @@ contains
       enddo
 
       nfeat0M1=nfeat0m    ! the number of features for feature type 1
+      !ccccccccccccccccccccccccccccccccccccccccccccc
 
       ! deallocate(list_neigh)
       ! deallocate(dR_neigh)
@@ -263,8 +263,8 @@ contains
       ! deallocate(num_neigh_alltypeM1)  !
       deallocate(map2neigh_alltypeM)
       deallocate(list_tmp)
-      deallocate(feat)  
-      deallocate(dfeat) 
+      deallocate(feat)
+      deallocate(dfeat)
       ! mem leak
       ! deallocate(grid2_2)  !
       !--------------------------------------------------------
