@@ -13,7 +13,7 @@ ifneq ($(is_mpiifort),0)
 endif
 
 FFLAG = -O3 -I/opt/iotk/src/ -mkl
-#FFLAG = -g -traceback -C -I/opt/iotk/src/ -mkl -debug all
+# FFLAG = -g -traceback -C -I/opt/iotk/src/ -mkl -debug all
 CFLAG = -O3 --std=c++11 -mkl -I../
 FLINKFLAG = -cxxlib -nofor_main
 #SRCS = $(wildcard *.f90)
@@ -23,15 +23,20 @@ OBJ =   dp_ff_mod.o li_ff_mod.o mod_matom.o mod_data.o \
         gen_deepMD_feature.o calc_deepMD_forceM.o \
         gen_2b_feature.o gen_3b_feature.o \
 		gen_2bgauss_feature.o gen_3bcos_feature.o \
-		gen_MTP_feature.o calc_lin_forceM.o \
+		gen_MTP_feature.o gen_SNAP_feature.o \
+		gen_deepMD1_feature.o gen_deepMD2_feature.o \
+		calc_lin_forceM.o \
 		find_feature_2b_type3.o find_feature_3b_type3.o \
 		find_feature_2bgauss.o find_feature_3bcos.o \
-		get_expand_MT.o find_feature_MTP.o calc_loop_ind.o calc_polynomial.o\
+		find_feature_SNAP.o find_feature_deepMD1.o find_feature_deepMD2.o \
+		get_expand_MT.o find_feature_MTP.o calc_loop_ind.o calc_polynomial.o \
+		calc_clebsch_gordan.o calc_U_JM1M2.o factorial.o \
+		calc_chebyshev.o \
         mod_m_neigh.o ML_FF_EF.o \
         f2c_calc_energy_force.o  
 
 # priority-sensitive
-MODS =	calc_lin.mod calc_deepmd_f.mod calc_deepMD.mod calc_ftype1.mod calc_ftype2.mod calc_2bgauss_feature.mod calc_3bcos_feature.mod calc_mtp_feature.mod mod_data.mod mod_parameter.mod mod_m_neigh.mod
+MODS =	calc_lin.mod calc_deepmd_f.mod calc_deepMD.mod calc_ftype1.mod calc_ftype2.mod calc_2bgauss_feature.mod calc_3bcos_feature.mod calc_mtp_feature.mod calc_snap_feature.mod calc_deepmd1_feature.mod calc_deepmd2_feature.mod mod_data.mod mod_parameter.mod mod_m_neigh.mod
 	   
 %.o:  %.f90
 	$(MPIFC) $(FFLAG) -c $<
@@ -56,6 +61,12 @@ calc_3bcos_feature.mod: gen_3bcos_feature.f90
 	$(MPIFC) $(FFLAG) -c $^
 calc_mtp_feature.mod: gen_MTP_feature.f90
 	$(MPIFC) $(FFLAG) -c $^
+calc_snap_feature.mod: gen_SNAP_feature.f90
+	$(MPIFC) $(FFLAG) -c $^
+calc_deepmd1_feature.mod: gen_deepMD1_feature.f90
+	$(MPIFC) $(FFLAG) -c $^
+calc_deepmd2_feature.mod: gen_deepMD2_feature.f90
+	$(MPIFC) $(FFLAG) -c $^
 mod_data.mod: mod_data.f90
 	$(MPIFC) $(FFLAG) -c $^
 mod_parameter.mod: mod_matom.f90
@@ -67,7 +78,8 @@ mods: calc_lin.mod mod_parameter.mod calc_deepMD.mod \
       mod_data.mod mod_m_neigh.mod mod_md.mod calc_deepmd_f.mod \
       calc_ftype1.mod calc_ftype2.mod \
 	  calc_2bgauss_feature.mod calc_3bcos_feature.mod \
-	  calc_mtp_feature.mod
+	  calc_mtp_feature.mod calc_snap_feature.mod \
+	  calc_deepmd1_feature.mod calc_deepmd2_feature.mod
 
 #mlff_predict.x: mods $(OBJ) mlff_predict.o
 #	make -C iotk

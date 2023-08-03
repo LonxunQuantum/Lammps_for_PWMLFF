@@ -37,6 +37,11 @@ module li_ff_mod
       real(8) :: ff_eta_type(200,50),ff_w_type(100,50),ff_alamda_type(100,50)
       integer :: ff_nMTP_type(100),ff_MTP_num
       integer :: ff_mu(10),ff_rank(10),ff_ind(10,10)
+      integer :: ff_nsnapw_type(50)       ! the number of weight combination
+      real(8) :: ff_snapj_type(50)        !  the J (can be integer, or hald integer, 1, 1.5)
+      real(8) :: ff_wsnap_type(50,10,50)  ! the weight
+      real(8) :: ff_weight_rterm(100),ff_w_dummy
+      integer :: ff_M_type(100),ff_M2_type(100)
 
       ! grid part
       ! real(8),allocatable,dimension (:,:) :: ff_grid2
@@ -67,7 +72,7 @@ module li_ff_mod
    type(single_ff) ff(4)
 
    ! loop index
-   integer(4) i,j,jj,k,kk,kkk
+   integer(4) i,ii,j,jj,k,kk,kkk
    integer(4) itype,itype1,itype2,num,k1,k2,k12,ii_f
 
    ! others tmps
@@ -175,6 +180,14 @@ contains
          if (ff(ff_idx)%ff_ifeat_type(kk).eq.6) then
             call f6(ff_idx,ocut)
          endif
+         ! for feature7
+         if (ff(ff_idx)%ff_ifeat_type(kk).eq.7) then
+            call f7(ff_idx,ocut)
+         endif
+         ! for feature8
+         if (ff(ff_idx)%ff_ifeat_type(kk).eq.8) then
+            call f8(ff_idx,ocut)
+         endif
       enddo
 
       ! reading shift and scale
@@ -209,7 +222,7 @@ contains
          stop
       endif
       if(ntype_vdw.ne.ff(ff_idx)%ff_num_type) then
-         write(6,*) "ntypes not same in vdw_fitB.ntype,something wrong"
+         write(6,*) "ntypes not same in vdw_fitB.ntype,something wrong",ntype_vdw,ff(ff_idx)%ff_num_type
          stop
       endif
       allocate(ff(ff_idx)%rad_atom(ff(ff_idx)%ff_num_type))
@@ -474,7 +487,7 @@ contains
 
    subroutine f5(ff_idx,ocut)
       integer, intent(in) :: ff_idx          ! index of ff to be loaded
-      real(8), intent(out) :: ocut           
+      real(8), intent(out) :: ocut
 
       ! reading gen_MTP_feature.in part
       read(10,*) ff(ff_idx)%ff_Rc_M, ff(ff_idx)%ff_max_neigh
@@ -603,22 +616,100 @@ contains
 
    subroutine f6(ff_idx,ocut)
       integer, intent(in) :: ff_idx          ! index of ff to be loaded
-      real(8), intent(out) :: ocut           
+      real(8), intent(out) :: ocut
 
-      ! reading gen_MTP_feature.in part
+      ! reading gen_SNAP_feature.in part
+      read(10,*) ff(ff_idx)%ff_Rc_M, ff(ff_idx)%ff_max_neigh
+      read(10,*) ff(ff_idx)%ff_num_type
+
+      do itype=1,ff(ff_idx)%ff_num_type
+         read(10,*) ff(ff_idx)%ff_iat_type(itype)
+         read(10,*) ff(ff_idx)%ff_Rc_type(itype)
+         if(ff(ff_idx)%ff_Rc_type(itype).gt.ff(ff_idx)%ff_Rc_M) then
+            write(6,*) "Rc_type must be smaller than Rc_M, gen_3b_feature.in", &
+               itype,ff(ff_idx)%ff_Rc_type(itype),ff(ff_idx)%ff_Rc_M
+            stop
+         endif
+         read(10,*) ff(ff_idx)%ff_snapj_type(itype),ff(ff_idx)%ff_nsnapw_type(itype) ! the type of snap within this atom type, each type is indicated by one J
+         do k=1,ff(ff_idx)%ff_nsnapw_type(itype)
+            read(10,*) (ff(ff_idx)%ff_wsnap_type(ii,k,itype),ii=1,ff(ff_idx)%ff_num_type)
+         enddo
+      enddo
+      read(10,*) ff(ff_idx)%ff_E_tolerance
 
       ocut=ff(1)%ff_Rc_M
       print*,"feature6"
 
    end subroutine f6
 
+   subroutine f7(ff_idx,ocut)
+      integer, intent(in) :: ff_idx          ! index of ff to be loaded
+      real(8), intent(out) :: ocut
+
+      ! reading gen_deepMD1_feature.in part
+      read(10,*) ff(ff_idx)%ff_Rc_M, ff(ff_idx)%ff_max_neigh
+      read(10,*) ff(ff_idx)%ff_num_type
+
+      do i=1,ff(ff_idx)%ff_num_type
+         read(10,*) ff(ff_idx)%ff_iat_type(i)
+         read(10,*) ff(ff_idx)%ff_Rc_type(i), &
+            ff(ff_idx)%ff_Rc2_type(i), &
+            ff(ff_idx)%ff_Rm_type(i)
+         read(10,*) ff(ff_idx)%ff_M_type(i),ff(ff_idx)%ff_weight_rterm(i)
+         read(10,*) ff(ff_idx)%ff_M2_type(i),ff(ff_idx)%ff_w_dummy   ! add M2 as parameter defined by user??
+         if(ff(ff_idx)%ff_Rc_type(i).gt.ff(ff_idx)%ff_Rc_M) then
+            write(6,*) "Rc_type must be smaller than Rc_M, gen_3b_feature.in", &
+               i,ff(ff_idx)%ff_Rc_type(i),ff(ff_idx)%ff_Rc_M
+            stop
+         endif
+      enddo
+      read(10,*) ff(ff_idx)%ff_E_tolerance
+
+      ocut=ff(1)%ff_Rc_M
+      print*,"feature7"
+
+   end subroutine f7
+
+   subroutine f8(ff_idx,ocut)
+      integer, intent(in) :: ff_idx          ! index of ff to be loaded
+      real(8), intent(out) :: ocut
+
+      ! reading gen_deepMD2_feature.in part
+      read(10,*) ff(ff_idx)%ff_Rc_M, ff(ff_idx)%ff_max_neigh
+      read(10,*) ff(ff_idx)%ff_num_type
+
+      do i=1,ff(ff_idx)%ff_num_type
+         read(10,*) ff(ff_idx)%ff_iat_type(i)
+         read(10,*) ff(ff_idx)%ff_Rc_type(i)
+         if(ff(ff_idx)%ff_Rc_type(i).gt.ff(ff_idx)%ff_Rc_M) then
+            write(6,*) "Rc_type must be smaller than Rc_M, gen_3b_feature.in", &
+               i,ff(ff_idx)%ff_Rc_type(i),ff(ff_idx)%ff_Rc_M
+            stop
+         endif
+         read(10,*) ff(ff_idx)%ff_n2b_type(i),ff(ff_idx)%ff_weight_rterm(i)
+         do j=1,ff(ff_idx)%ff_n2b_type(i)
+            read(10,*) ff(ff_idx)%ff_grid2(j,i),ff(ff_idx)%ff_wgauss(j,i)
+         enddo
+      enddo
+      read(10,*) ff(ff_idx)%ff_E_tolerance
+
+      ocut=ff(1)%ff_Rc_M
+      print*,"feature8"
+
+   end subroutine f8
+
    subroutine li_ff_deallocate(ff_idx) bind(c,name="li_ff_deallocate")
       ! deallocate the ff pointers
       integer, intent(in) :: ff_idx
 
-      deallocate(ff(ff_idx)%ff_grid2_2)
-      deallocate(ff(ff_idx)%ff_grid31_2)
-      deallocate(ff(ff_idx)%ff_grid32_2)
+      do kk = 1, ff(ff_idx)%ff_nfeat_type
+         ! for feature1 & feature2
+         if (ff(ff_idx)%ff_ifeat_type(kk).eq.2) then
+            deallocate(ff(ff_idx)%ff_grid2_2)
+            deallocate(ff(ff_idx)%ff_grid31_2)
+            deallocate(ff(ff_idx)%ff_grid32_2)
+         endif
+      enddo
       ! deallocate(ff(ff_idx)%w_feat)
       deallocate(ff(ff_idx)%BB)
       deallocate(ff(ff_idx)%ff_feat2_shift)

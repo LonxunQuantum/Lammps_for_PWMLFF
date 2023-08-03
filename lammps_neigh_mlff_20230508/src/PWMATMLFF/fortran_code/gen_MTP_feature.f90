@@ -35,7 +35,6 @@ module calc_MTP_feature
 contains
    subroutine load_model_type5(ff_idx)
       integer, intent(in) :: ff_idx
-      integer :: kkk
 
       ! gen_MTP_feature.in
       Rc_M=ff(ff_idx)%ff_Rc_M

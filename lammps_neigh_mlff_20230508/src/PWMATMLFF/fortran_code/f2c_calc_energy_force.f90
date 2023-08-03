@@ -26,6 +26,9 @@ subroutine f2c_calc_energy_force(i_model_lvn, &
    use calc_2bgauss_feature, only: load_model_type3, set_image_info_type3
    use calc_3bcos_feature, only: load_model_type4, set_image_info_type4
    use calc_MTP_feature, only: load_model_type5, set_image_info_type5
+   use calc_SNAP_feature, only: load_model_type6, set_image_info_type6
+   use calc_deepMD1_feature, only: load_model_type7, set_image_info_type7
+   use calc_deepMD2_feature, only: load_model_type8, set_image_info_type8
    ! use for model
    use calc_lin, only: load_model_lin, set_image_info_lin, nfeat_type_l, ifeat_type_l
    use calc_deepMD, only: load_model_deepMD, set_image_info_deepMD
@@ -120,8 +123,20 @@ subroutine f2c_calc_energy_force(i_model_lvn, &
             call load_model_type5(ff_idx)          ! load up the parameter etc
             call set_image_info_type5(ff_idx)
          endif
+         if(ifeat_type(kk).eq.6) then
+            call load_model_type6(ff_idx)          ! load up the parameter etc
+            call set_image_info_type6(ff_idx)
+         endif
+         if(ifeat_type(kk).eq.7) then
+            call load_model_type7(ff_idx)          ! load up the parameter etc
+            call set_image_info_type7(ff_idx)
+         endif
+         if(ifeat_type(kk).eq.8) then
+            call load_model_type8(ff_idx)          ! load up the parameter etc
+            call set_image_info_type8(ff_idx)
+         endif
       enddo
-   endif 
+   endif
 
    if(iflag_model.eq.5) then
 
