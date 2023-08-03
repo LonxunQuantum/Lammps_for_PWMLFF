@@ -1,7 +1,7 @@
 module calc_lin
 
    use mod_data, only : natoms, nall, ntypes, catype, atype
-   use ff_mod, only : ff ! force field data
+   use li_ff_mod, only : ff ! force field data
    !implicit double precision (a-h, o-z)
    implicit none
 

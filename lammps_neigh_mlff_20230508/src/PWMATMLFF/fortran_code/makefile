@@ -19,17 +19,19 @@ FLINKFLAG = -cxxlib -nofor_main
 #SRCS = $(wildcard *.f90)
 #OBJ = $(patsubst %.f90,%.o,$(SRCS))
 # priority-sensitive
-OBJ =   dp_ff_mod.o ff_mod.o mod_matom.o mod_data.o \
+OBJ =   dp_ff_mod.o li_ff_mod.o mod_matom.o mod_data.o \
         gen_deepMD_feature.o calc_deepMD_forceM.o \
         gen_2b_feature.o gen_3b_feature.o \
-		gen_2bgauss_feature.o gen_3bcos_feature.o calc_lin_forceM.o \
+		gen_2bgauss_feature.o gen_3bcos_feature.o \
+		gen_MTP_feature.o calc_lin_forceM.o \
 		find_feature_2b_type3.o find_feature_3b_type3.o \
 		find_feature_2bgauss.o find_feature_3bcos.o \
+		get_expand_MT.o find_feature_MTP.o calc_loop_ind.o calc_polynomial.o\
         mod_m_neigh.o ML_FF_EF.o \
         f2c_calc_energy_force.o  
 
 # priority-sensitive
-MODS =	calc_deepmd_f.mod calc_deepMD.mod calc_ftype1.mod calc_ftype2.mod calc_2bgauss_feature.mod calc_3bcos_feature.mod calc_lin.mod mod_data.mod mod_parameter.mod mod_m_neigh.mod
+MODS =	calc_lin.mod calc_deepmd_f.mod calc_deepMD.mod calc_ftype1.mod calc_ftype2.mod calc_2bgauss_feature.mod calc_3bcos_feature.mod calc_mtp_feature.mod mod_data.mod mod_parameter.mod mod_m_neigh.mod
 	   
 %.o:  %.f90
 	$(MPIFC) $(FFLAG) -c $<
@@ -38,11 +40,11 @@ MODS =	calc_deepmd_f.mod calc_deepMD.mod calc_ftype1.mod calc_ftype2.mod calc_2b
 %.o: %.cpp
 	$(MPICXX) $(CFLAG) -c $<
 
+calc_lin.mod: calc_lin_forceM.f90
+	$(MPIFC) $(FFLAG) -c $^
 calc_deepMD.mod: calc_deepMD_forceM.f90
 	$(MPIFC) $(FFLAG) -c $^
 calc_deepMD_f.mod: gen_deepMD_feature.f90
-	$(MPIFC) $(FFLAG) -c $^
-calc_lin.mod: calc_lin_forceM.f90
 	$(MPIFC) $(FFLAG) -c $^
 calc_ftype1.mod: gen_2b_feature.f90
 	$(MPIFC) $(FFLAG) -c $^
@@ -52,6 +54,8 @@ calc_2bgauss_feature.mod: gen_2bgauss_feature.f90
 	$(MPIFC) $(FFLAG) -c $^
 calc_3bcos_feature.mod: gen_3bcos_feature.f90
 	$(MPIFC) $(FFLAG) -c $^
+calc_mtp_feature.mod: gen_MTP_feature.f90
+	$(MPIFC) $(FFLAG) -c $^
 mod_data.mod: mod_data.f90
 	$(MPIFC) $(FFLAG) -c $^
 mod_parameter.mod: mod_matom.f90
@@ -59,10 +63,11 @@ mod_parameter.mod: mod_matom.f90
 mod_parameter.mod: mod_m_neigh.f90
 	$(MPIFC) $(FFLAG) -c $^
 
-mods: mod_parameter.mod calc_deepMD.mod \
+mods: calc_lin.mod mod_parameter.mod calc_deepMD.mod \
       mod_data.mod mod_m_neigh.mod mod_md.mod calc_deepmd_f.mod \
       calc_ftype1.mod calc_ftype2.mod \
-	  calc_2bgauss_feature.mod calc_3bcos_feature.mod calc_lin.mod \
+	  calc_2bgauss_feature.mod calc_3bcos_feature.mod \
+	  calc_mtp_feature.mod
 
 #mlff_predict.x: mods $(OBJ) mlff_predict.o
 #	make -C iotk

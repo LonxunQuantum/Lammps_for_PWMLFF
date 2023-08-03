@@ -3,7 +3,7 @@
 !**************************************************
 module calc_ftype2
 
-   use ff_mod, only: ff
+   use li_ff_mod, only: ff
 
    use mod_data, only : natoms, ntypes, catype
 

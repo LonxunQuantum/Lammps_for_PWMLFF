@@ -6,10 +6,12 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
       num_neigh_alltypeM1,list_neigh_alltypeM1,natom1,m_neigh1
    use calc_ftype2, only : feat_M2,dfeat_M2,nfeat0M2,gen_feature_type2, &
       num_neigh_alltypeM2,list_neigh_alltypeM2,natom2,m_neigh2
-   use calc_2bgauss_feature, only : feat_M3,dfeat_M3,nfeat0M3,gen_feature_2bgauss,  &
+   use calc_2bgauss_feature, only : feat_M3,dfeat_M3,nfeat0M3,gen_feature_2bgauss, &
       num_neigh_alltypeM3,list_neigh_alltypeM3,natom3,m_neigh3
-   use calc_3bcos_feature, only : feat_M4,dfeat_M4,nfeat0M4,gen_3bcos_feature,  &
+   use calc_3bcos_feature, only : feat_M4,dfeat_M4,nfeat0M4,gen_3bcos_feature, &
       num_neigh_alltypeM4,list_neigh_alltypeM4,natom4,m_neigh4
+   use calc_MTP_feature, only : feat_M5,dfeat_M5,nfeat0M5,gen_MTP_feature, &
+      num_neigh_alltypeM5,list_neigh_alltypeM5,natom5,m_neigh5
    use calc_lin, only : cal_energy_force_lin, nfeat_type_l,ifeat_type_l
    use calc_deepMD, only : cal_energy_force_deepMD
    use mod_m_neigh, only : load_m_neigh,m_neigh
@@ -63,7 +65,6 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
       endif
 
       nfeat0=0
-
       do kk = 1, nfeat_type
          if (ifeat_type(kk).eq.1) then
             call gen_feature_type1(num_neigh,list_neigh,dR_neigh)
@@ -81,7 +82,10 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
             call gen_3bcos_feature(num_neigh,list_neigh,dR_neigh)
             nfeat0=nfeat0+nfeat0M4
          endif
-
+         if (ifeat_type(kk).eq.5) then
+            call gen_MTP_feature(num_neigh,list_neigh,dR_neigh)
+            nfeat0=nfeat0+nfeat0M5
+         endif
       enddo
 
       !*****************************************
@@ -127,6 +131,16 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
             endif
             allocate(list_neigh_alltypeM_use(m_neigh, natom))
             list_neigh_alltypeM_use = list_neigh_alltypeM4
+         endif
+         if (ifeat_type(kk).eq.5) then
+            natom=natom5
+            m_neigh=m_neigh5
+            num_neigh_alltypeM_use = num_neigh_alltypeM5
+            if(allocated(list_neigh_alltypeM_use)) then
+               deallocate(list_neigh_alltypeM_use)
+            endif
+            allocate(list_neigh_alltypeM_use(m_neigh, natom))
+            list_neigh_alltypeM_use = list_neigh_alltypeM5
          endif
       enddo
 
@@ -179,6 +193,15 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
                enddo
             enddo
             count=count+nfeat0M4
+         endif
+
+         if (ifeat_type(kk).eq.5) then
+            do iat=1,natoms
+               do ii=1,nfeat0M5
+                  feat(ii+count,iat)=feat_M5(ii,iat)
+               enddo
+            enddo
+            count=count+nfeat0M5
          endif
       enddo
 
@@ -234,6 +257,19 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
                enddo
             enddo
             count=count+nfeat0M4
+         endif
+
+         if (ifeat_type(kk).eq.5) then
+            do jj=1,m_neigh
+               do iat=1,natoms
+                  do ii=1,nfeat0M5
+                     dfeat(ii+count,iat,jj,1)=dfeat_M5(ii,iat,jj,1)
+                     dfeat(ii+count,iat,jj,2)=dfeat_M5(ii,iat,jj,2)
+                     dfeat(ii+count,iat,jj,3)=dfeat_M5(ii,iat,jj,3)
+                  enddo
+               enddo
+            enddo
+            count=count+nfeat0M5
          endif
       enddo
    endif

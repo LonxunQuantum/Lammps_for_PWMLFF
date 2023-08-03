@@ -1,6 +1,6 @@
 module calc_2bgauss_feature
 
-   use ff_mod, only: ff
+   use li_ff_mod, only: ff
 
    use mod_data, only : natoms, ntypes, catype
 

@@ -1,0 +1,16 @@
+units           metal
+boundary        p p p
+atom_style      atomic
+processors      * * *
+neighbor        2.0 bin
+neigh_modify    every 10 delay 0 check no
+read_data       lmp.init
+pair_style      pwmatmlff
+pair_coeff      * * 5 4 1.ff 2.ff 3.ff 4.ff 3 14 0.12 0.25
+velocity        all create 1200 206952 dist gaussian
+timestep        0.001
+fix             1 all npt temp 1200 1200 0.025 tri 1.0 1.0 0.1
+thermo_style    custom step pe ke etotal temp vol press
+thermo          1
+dump            1 all custom 1 traj id type x y z  vx vy vz fx fy fz
+run             10 

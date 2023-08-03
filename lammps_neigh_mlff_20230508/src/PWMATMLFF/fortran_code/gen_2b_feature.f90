@@ -2,7 +2,7 @@ module calc_ftype1
    ! ******************************************
    !      feature calc on a SINGLE core
    ! ******************************************
-   use ff_mod, only: ff
+   use li_ff_mod, only: ff
 
    use mod_data, only : natoms, ntypes, catype
 
@@ -221,7 +221,7 @@ contains
          !  iflag_ftype.eq.3, the sin peak span over the two ends specified by grid31_2,grid32_2
          !  So, there could be many overlaps between different sin peaks
          call find_feature_2b_type3(num_neigh,dR_neigh,m_neigh,list_neigh,&
-            n2b_type,n2bm,grid2_2,Rc_type,&
+            n2b_type,n2bm,grid2_2,&
             feat,dfeat,nfeat0m)
       endif
       !cccccccccccccccccccccccccccccccccccccccccccccccccccc

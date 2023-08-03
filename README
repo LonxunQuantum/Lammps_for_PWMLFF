@@ -1,7 +1,7 @@
 
 
 0. get package
-  git clone https://gitee.com/lxkt-dbmlff-sqj/lammps-mlff.git
+  git clone https://github.com/LonxunQuantum/Lammps_for_PWMLFF.git
 
 1. install (in Mcloud)
    module load intel/2020
