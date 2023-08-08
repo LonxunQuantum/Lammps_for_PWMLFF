@@ -55,7 +55,8 @@ module nn_ff_mod
       ! parameters for SNAP feature
       real(8) :: Rc_M, E_tolerance
       integer :: iat_type(100)
-      real(8) :: Rc_type(100), nsnapw_type(50), snapj_type(50), wsnap_type(50,10,50)
+      integer :: nsnapw_type(50)
+      real(8) :: Rc_type(100), snapj_type(50), wsnap_type(50,10,50)
    end type feat_6_para
 
    type feat_7_para
