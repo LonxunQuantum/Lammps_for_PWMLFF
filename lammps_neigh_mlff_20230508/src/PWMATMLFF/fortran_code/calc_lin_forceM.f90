@@ -1,7 +1,7 @@
 module calc_lin
 
    use mod_data, only : natoms, nall, ntypes, catype, atype
-   use li_ff_mod, only : ff ! force field data
+   use li_ff_mod, only : li_ff ! force field data
    !implicit double precision (a-h, o-z)
    implicit none
 
@@ -33,8 +33,8 @@ module calc_lin
 
    real(8),allocatable,dimension(:) :: rad_atom,E_ave_vdw
    real(8),allocatable,dimension(:,:,:) :: wp_atom
-   integer :: ifeat_type_l(100)
    integer :: nfeat_type_l
+   integer :: ifeat_type_l(10)
 
    !!!!!!!!!!!!!          以上为  module variables     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!
    ! loop index
@@ -72,27 +72,27 @@ contains
       allocate(E_ave_vdw(ntypes))
       allocate(wp_atom(ntypes,ntypes,2))
       ! **************** read vdw_fitB.ntype *************
-      nterm=ff(ff_idx)%nterm
+      nterm=li_ff(ff_idx)%nterm
       do itype=1,ntypes
-         rad_atom(itype)=ff(ff_idx)%rad_atom(itype)
-         E_ave_vdw(itype)=ff(ff_idx)%E_ave_vdw(itype)
+         rad_atom(itype)=li_ff(ff_idx)%rad_atom(itype)
+         E_ave_vdw(itype)=li_ff(ff_idx)%E_ave_vdw(itype)
          do j=1,nterm
             do i=1,ntypes
-               wp_atom(i,itype,j)=ff(ff_idx)%wp_atom(i,itype,j)
+               wp_atom(i,itype,j)=li_ff(ff_idx)%wp_atom(i,itype,j)
             enddo
          enddo
       enddo
       ! **************** read feat.info ********************
-      m_neigh=ff(ff_idx)%ff_max_neigh
-      nfeat_type_l=ff(ff_idx)%ff_nfeat_type
+      m_neigh=li_ff(ff_idx)%ff_max_neigh
+      nfeat_type_l=li_ff(ff_idx)%ff_nfeat_type
       do kkk=1,nfeat_type_l
-         ifeat_type_l(kkk)=ff(ff_idx)%ff_ifeat_type(kkk)   ! the index (1,2,3) of the feature type
+         ifeat_type_l(kkk)=li_ff(ff_idx)%ff_ifeat_type(kkk)   ! the index (1,2,3) of the feature type
       enddo
-      ! ntype=ff(ff_idx)%ff_num_type
+      ! ntype=li_ff(ff_idx)%ff_num_type
       do i=1,ntypes
-         iatom_tmp(i)=ff(ff_idx)%ff_itype_atom_sumfe(i,1)
-         nfeat1(i)=ff(ff_idx)%ff_itype_atom_sumfe(i,2) ! these nfeat1,nfeat2 include all ftype
-         nfeat2(i)=ff(ff_idx)%ff_itype_atom_sumfe(i,3)
+         iatom_tmp(i)=li_ff(ff_idx)%ff_itype_atom_sumfe(i,1)
+         nfeat1(i)=li_ff(ff_idx)%ff_itype_atom_sumfe(i,2) ! these nfeat1,nfeat2 include all ftype
+         nfeat2(i)=li_ff(ff_idx)%ff_itype_atom_sumfe(i,3)
       enddo
 
       ! cccccccc Right now, nfeat1,nfeat2,for different types
@@ -117,14 +117,14 @@ contains
       allocate(bb(nfeat2tot))
       allocate(bb_type0(nfeat2m,ntypes))
 
-      ntmp=ff(ff_idx)%nfeat2tot
+      ntmp=li_ff(ff_idx)%nfeat2tot
       if (ntmp/=nfeat2tot) then
          write (6, *) 'ntmp.not.right,linear_fitb.ntypes', ntmp, nfeat2tot
          stop
       endif
       do i = 1, nfeat2tot
-         itmp=ff(ff_idx)%ifeat2tot
-         bb(i) = ff(ff_idx)%BB(i)
+         itmp=li_ff(ff_idx)%ifeat2tot
+         bb(i) = li_ff(ff_idx)%BB(i)
       enddo
       do itype = 1, ntypes
          do k = 1, nfeat2(itype)
@@ -149,8 +149,8 @@ contains
          enddo
       enddo
 
-      feat2_shift=ff(ff_idx)%ff_feat2_shift
-      feat2_scale=ff(ff_idx)%ff_feat2_scale
+      feat2_shift=li_ff(ff_idx)%ff_feat2_shift
+      feat2_scale=li_ff(ff_idx)%ff_feat2_scale
 
    end subroutine load_model_lin
 

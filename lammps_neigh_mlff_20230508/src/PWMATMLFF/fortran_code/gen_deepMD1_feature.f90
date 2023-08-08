@@ -1,8 +1,9 @@
 module calc_deepMD1_feature
 
-   use li_ff_mod, only: ff
+   use li_ff_mod, only: li_ff
+   use nn_ff_mod, only: nn_ff
 
-   use mod_data, only : natoms, ntypes, catype
+   use mod_data, only : natoms, ntypes, catype, iflag_model
 
    IMPLICIT NONE
 
@@ -29,16 +30,31 @@ contains
       integer, intent(in) :: ff_idx
 
       ! gen_deepMD1_feature.in
-      Rc_M=ff(ff_idx)%ff_Rc_M
-      iat_type=ff(ff_idx)%ff_iat_type
-      Rc_type=ff(ff_idx)%ff_Rc_type
-      Rc2_type=ff(ff_idx)%ff_Rc2_type
-      Rm_type=ff(ff_idx)%ff_Rm_type
-      M_type=ff(ff_idx)%ff_M_type
-      weight_rterm=ff(ff_idx)%ff_weight_rterm
-      M2_type=ff(ff_idx)%ff_M2_type
-      w_dummy=ff(ff_idx)%ff_w_dummy
-      E_tolerance=ff(ff_idx)%ff_E_tolerance
+      if (iflag_model.eq.1) then
+         Rc_M=li_ff(ff_idx)%ff_Rc_M
+         m_neigh=li_ff(ff_idx)%ff_max_neigh
+         iat_type=li_ff(ff_idx)%ff_iat_type
+         Rc_type=li_ff(ff_idx)%ff_Rc_type
+         Rc2_type=li_ff(ff_idx)%ff_Rc2_type
+         Rm_type=li_ff(ff_idx)%ff_Rm_type
+         M_type=li_ff(ff_idx)%ff_M_type
+         weight_rterm=li_ff(ff_idx)%ff_weight_rterm
+         M2_type=li_ff(ff_idx)%ff_M2_type
+         w_dummy=li_ff(ff_idx)%ff_w_dummy
+         E_tolerance=li_ff(ff_idx)%ff_E_tolerance
+      else if (iflag_model.eq.3) then
+         Rc_M=nn_ff(ff_idx)%nn_feat_7_para%Rc_M
+         m_neigh=nn_ff(ff_idx)%ff_max_neigh
+         iat_type=nn_ff(ff_idx)%nn_feat_7_para%iat_type
+         Rc_type=nn_ff(ff_idx)%nn_feat_7_para%Rc_type
+         Rc2_type=nn_ff(ff_idx)%nn_feat_7_para%Rc2_type
+         Rm_type=nn_ff(ff_idx)%nn_feat_7_para%Rm_type
+         M_type=nn_ff(ff_idx)%nn_feat_7_para%M_type
+         weight_rterm=nn_ff(ff_idx)%nn_feat_7_para%weight_rterm
+         M2_type=nn_ff(ff_idx)%nn_feat_7_para%M2_type
+         w_dummy=nn_ff(ff_idx)%nn_feat_7_para%w_dummy
+         E_tolerance=nn_ff(ff_idx)%nn_feat_7_para%E_tolerance
+      endif
 
       ! M1 M2 both controls feature num
       nfeat0m=0
@@ -50,7 +66,7 @@ contains
          !  nfeat0(itype)=M1*(M1+1)/2
          if(nfeat0(itype).gt.nfeat0m) nfeat0m=nfeat0(itype)
       enddo
-    !    write(6,*) "itype,nfeat0=",(nfeat0(itype),itype=1,ntypes)
+      !    write(6,*) "itype,nfeat0=",(nfeat0(itype),itype=1,ntypes)
       !cccccccccccccccccccccccccccccccccccccccc
       !  FInish the initial grid treatment
    end subroutine load_model_type7
@@ -58,8 +74,8 @@ contains
    subroutine set_image_info_type7(ff_idx)
       integer, intent(in) :: ff_idx
 
-      m_neigh=ff(ff_idx)%ff_max_neigh
-      m_neigh7=m_neigh
+      ! m_neigh=li_ff(ff_idx)%ff_max_neigh
+      ! m_neigh7=m_neigh
       natom7=natoms
 
    end subroutine set_image_info_type7

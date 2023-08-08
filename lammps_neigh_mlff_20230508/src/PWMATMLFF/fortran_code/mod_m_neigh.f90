@@ -1,30 +1,22 @@
 module mod_m_neigh
    use mod_data, only : iflag_model
-   use calc_ftype1, only : m_neigh1
-   use calc_ftype2, only : m_neigh2
-   use calc_deepMD_f, only : m_neigh_t5
-   implicit none
-   integer :: m_neigh                                  !模型所使用的最大近邻数
+   use li_ff_mod, only : li_ff
+   use nn_ff_mod, only : nn_ff
 
-   contains
-   
+   implicit none
+   integer :: m_neigh   ! model max num of neighbors
+
+contains
+
    subroutine load_m_neigh()
-      
-      if(iflag_model.eq.1) then
-         ! linear model
-         if(m_neigh1.eq.m_neigh2) then
-            m_neigh=m_neigh1
-         else
-            write(*,*) 'm_neigh1 and m_neigh2 are not equal'
-            stop
-         endif
+      if (iflag_model == 1) then
+         m_neigh = li_ff(1)%ff_max_neigh
+      elseif (iflag_model == 3) then
+         m_neigh = nn_ff(1)%ff_max_neigh
+      else
+         write(*,*) 'error: iflag_model is wrong'
+         stop
       endif
-      
-      if(iflag_model.eq.5) then
-         ! dp model
-         m_neigh=m_neigh_t5
-      endif
-          
    end subroutine load_m_neigh
-   
+
 end module mod_m_neigh

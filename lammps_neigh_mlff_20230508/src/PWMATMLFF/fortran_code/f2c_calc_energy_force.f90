@@ -31,6 +31,7 @@ subroutine f2c_calc_energy_force(i_model_lvn, &
    use calc_deepMD2_feature, only: load_model_type8, set_image_info_type8
    ! use for model
    use calc_lin, only: load_model_lin, set_image_info_lin, nfeat_type_l, ifeat_type_l
+   use calc_NN, only: load_model_NN, set_image_info_NN, nfeat_type_n, ifeat_type_n
    use calc_deepMD, only: load_model_deepMD, set_image_info_deepMD
    use calc_deepMD_f,only: load_model_deepMD_f,set_image_info_deepMD_f
 
@@ -54,7 +55,7 @@ subroutine f2c_calc_energy_force(i_model_lvn, &
    logical :: atype_check
    integer :: i, j, t, kk
    integer :: nfeat_type
-   integer, dimension(100) :: ifeat_type
+   integer, dimension(10) :: ifeat_type
 
    ! write(*,*) " --- f2c CHECK --- "
    ! write(*,*) "imodel ", i_model_lvn
@@ -99,7 +100,16 @@ subroutine f2c_calc_energy_force(i_model_lvn, &
       ifeat_type = ifeat_type_l
    endif
 
-   if(iflag_model.eq.1) then
+   if(iflag_model.eq.3) then
+      call load_model_NN(ff_idx)
+      ! check atom type
+      atype_check = .True.
+      call set_image_info_NN(atype_check)
+      nfeat_type = nfeat_type_n     ! maybe define as global variable
+      ifeat_type = ifeat_type_n
+   endif
+
+   if((iflag_model.eq.1).or.(iflag_model.eq.3)) then
       do kk = 1, nfeat_type
          if(ifeat_type(kk).eq.1) then
             ! load feature cutoff, shift and norm

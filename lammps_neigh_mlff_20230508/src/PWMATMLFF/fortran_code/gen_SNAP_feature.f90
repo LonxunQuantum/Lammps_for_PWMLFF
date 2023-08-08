@@ -1,8 +1,9 @@
 module calc_SNAP_feature
 
-   use li_ff_mod, only: ff
+   use li_ff_mod, only: li_ff
+   use nn_ff_mod, only: nn_ff
 
-   use mod_data, only : natoms, ntypes, catype
+   use mod_data, only : natoms, ntypes, catype, iflag_model
 
    IMPLICIT NONE
    integer :: j,itype,ii,k
@@ -37,13 +38,25 @@ contains
       integer, intent(in) :: ff_idx
 
       ! gen_SNAP_feature.in
-      Rc_M=ff(ff_idx)%ff_Rc_M
-      iat_type=ff(ff_idx)%ff_iat_type
-      Rc_type=ff(ff_idx)%ff_Rc_type
-      snapj_type=ff(ff_idx)%ff_snapj_type
-      nsnapw_type=ff(ff_idx)%ff_nsnapw_type
-      wsnap_type=ff(ff_idx)%ff_wsnap_type
-      E_tolerance=ff(ff_idx)%ff_E_tolerance
+      if (iflag_model.eq.1) then
+         Rc_M=li_ff(ff_idx)%ff_Rc_M
+         m_neigh=li_ff(ff_idx)%ff_max_neigh
+         iat_type=li_ff(ff_idx)%ff_iat_type
+         Rc_type=li_ff(ff_idx)%ff_Rc_type
+         snapj_type=li_ff(ff_idx)%ff_snapj_type
+         nsnapw_type=li_ff(ff_idx)%ff_nsnapw_type
+         wsnap_type=li_ff(ff_idx)%ff_wsnap_type
+         E_tolerance=li_ff(ff_idx)%ff_E_tolerance
+      else if (iflag_model.eq.3) then
+         Rc_M=nn_ff(ff_idx)%nn_feat_6_para%Rc_M
+         m_neigh=nn_ff(ff_idx)%ff_max_neigh
+         iat_type=nn_ff(ff_idx)%nn_feat_6_para%iat_type
+         Rc_type=nn_ff(ff_idx)%nn_feat_6_para%Rc_type
+         snapj_type=nn_ff(ff_idx)%nn_feat_6_para%snapj_type
+         nsnapw_type=nn_ff(ff_idx)%nn_feat_6_para%nsnapw_type
+         wsnap_type=nn_ff(ff_idx)%nn_feat_6_para%wsnap_type
+         E_tolerance=nn_ff(ff_idx)%nn_feat_6_para%E_tolerance
+      endif
 
       nfeat0m=0
       nBBm=0
@@ -122,8 +135,8 @@ contains
    subroutine set_image_info_type6(ff_idx)
       integer, intent(in) :: ff_idx
 
-      m_neigh=ff(ff_idx)%ff_max_neigh
-      m_neigh6=m_neigh
+      ! m_neigh=li_ff(ff_idx)%ff_max_neigh
+      ! m_neigh6=m_neigh
       natom6=natoms
 
    end subroutine set_image_info_type6

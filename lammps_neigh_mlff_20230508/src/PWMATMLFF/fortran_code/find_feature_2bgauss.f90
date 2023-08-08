@@ -65,7 +65,7 @@ subroutine find_feature_2bgauss(num_neigh,dR_neigh,m_neigh,list_neigh,&
          do 1000 j=1,num_neigh(itype,iat)
             jj=ind_all_neigh(j,itype,iat)
             dd=dR_neigh(1,j,itype,iat)**2+dR_neigh(2,j,itype,iat)**2+dR_neigh(3,j,itype,iat)**2
-            d=dsqrt(dd)
+            d=dsqrt(dd) ! Rij
             if(d.gt.Rc(itype0)) goto 1001
             do k=1,n2b(itype0)
                Rt=wgauss(k,itype0)

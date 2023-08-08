@@ -1,14 +1,15 @@
 module calc_3bcos_feature
-   use li_ff_mod, only: ff
+   use li_ff_mod, only: li_ff
+   use nn_ff_mod, only: nn_ff
 
-   use mod_data, only : natoms, ntypes, catype
+   use mod_data, only : natoms, ntypes, catype, iflag_model
 
    IMPLICIT NONE
    integer :: i,j,itype
    integer :: max_neigh,max_neigh_M
    integer :: iat_type(100)
    integer :: n3b_type(50),n3bm
-   real(8) :: Rc_M,Rc_type(50)
+   real(8) :: Rc_M,Rc_type(100)
    real(8) :: eta_type(200,50),w_type(100,50),alamda_type(100,50)
    real(8) :: E_tolerance
 
@@ -29,18 +30,27 @@ contains
       integer :: itype1,itype2
 
       ! gen_3bcos_feature.in
-      Rc_M=ff(ff_idx)%ff_Rc_M
-      do i=1,ff(ff_idx)%ff_num_type
-         iat_type(i)=ff(ff_idx)%ff_iat_type(i)
-         Rc_type(i)=ff(ff_idx)%ff_Rc_type(i)
-         n3b_type(i)=ff(ff_idx)%ff_n3b_type(i)
-         do j=1,n3b_type(i)
-            eta_type(j,i)=ff(ff_idx)%ff_eta_type(j,i)
-            w_type(j,i)=ff(ff_idx)%ff_w_type(j,i)
-            alamda_type(j,i)=ff(ff_idx)%ff_alamda_type(j,i)
-         enddo
-      enddo
-      E_tolerance=ff(ff_idx)%ff_E_tolerance
+      if (iflag_model.eq.1) then
+         Rc_M=li_ff(ff_idx)%ff_Rc_M
+         m_neigh=li_ff(ff_idx)%ff_max_neigh
+         iat_type=li_ff(ff_idx)%ff_iat_type
+         Rc_type=li_ff(ff_idx)%ff_Rc_type
+         n3b_type=li_ff(ff_idx)%ff_n3b_type
+         eta_type=li_ff(ff_idx)%ff_eta_type
+         w_type=li_ff(ff_idx)%ff_w_type
+         alamda_type=li_ff(ff_idx)%ff_alamda_type
+         E_tolerance=li_ff(ff_idx)%ff_E_tolerance
+      else if (iflag_model.eq.3) then
+         Rc_M=nn_ff(ff_idx)%nn_feat_4_para%Rc_M
+         m_neigh=nn_ff(ff_idx)%ff_max_neigh
+         iat_type=nn_ff(ff_idx)%nn_feat_4_para%iat_type
+         Rc_type=nn_ff(ff_idx)%nn_feat_4_para%Rc_type
+         n3b_type=nn_ff(ff_idx)%nn_feat_4_para%n3b_type
+         eta_type=nn_ff(ff_idx)%nn_feat_4_para%eta_type
+         w_type=nn_ff(ff_idx)%nn_feat_4_para%w_type
+         alamda_type=nn_ff(ff_idx)%nn_feat_4_para%alamda_type
+         E_tolerance=nn_ff(ff_idx)%nn_feat_4_para%E_tolerance
+      endif
 
       !cccccccccccccccccccccccccccccccccccccccc
       n3bm=0
@@ -67,8 +77,8 @@ contains
    subroutine set_image_info_type4(ff_idx)
       integer, intent(in) :: ff_idx
 
-      m_neigh=ff(ff_idx)%ff_max_neigh
-      m_neigh4=m_neigh
+      ! m_neigh=li_ff(ff_idx)%ff_max_neigh
+      ! m_neigh4=m_neigh
       natom4=natoms
 
    end subroutine set_image_info_type4
@@ -195,9 +205,9 @@ contains
 
       nfeat0M4=nfeat0m    ! the number of features for feature type 1
 
-    !   deallocate(list_neigh)
-    !   deallocate(dR_neigh)
-    !   deallocate(num_neigh)
+      !   deallocate(list_neigh)
+      !   deallocate(dR_neigh)
+      !   deallocate(num_neigh)
       deallocate(list_neigh_alltype)
       deallocate(num_neigh_alltype)
 

@@ -1,8 +1,9 @@
 module calc_MTP_feature
 
-   use li_ff_mod, only: ff,numCC_type,numT_all,rank_all,mu_all,jmu_b_all,itype_b_all,indi_all,indj_all
+   use li_ff_mod, only: li_ff,li_numCC_type,li_numT_all,li_rank_all,li_mu_all,li_jmu_b_all,li_itype_b_all,li_indi_all,li_indj_all
+   use nn_ff_mod, only: nn_ff,nn_numCC_type,nn_numT_all,nn_rank_all,nn_mu_all,nn_jmu_b_all,nn_itype_b_all,nn_indi_all,nn_indj_all
 
-   use mod_data, only : natoms, ntypes, catype
+   use mod_data, only : natoms, ntypes, catype, iflag_model
 
    IMPLICIT NONE
    integer :: i,j,itype
@@ -21,11 +22,11 @@ module calc_MTP_feature
    integer,allocatable,dimension (:) :: num_neigh_alltypeM5
    integer :: nfeat0M5
 !cccccccccccccccccccccccccccccccccccccccccccccccc
-   ! integer :: numT_all(20000,10)
-   ! integer :: rank_all(4,20000,10),mu_all(4,20000,10),jmu_b_all(4,20000,10),itype_b_all(4,20000,10)
-   ! integer :: indi_all(5,4,20000,10),indj_all(5,4,20000,10)
+   integer :: numT_all(20000,10)
+   integer :: rank_all(4,20000,10),mu_all(4,20000,10),jmu_b_all(4,20000,10),itype_b_all(4,20000,10)
+   integer :: indi_all(5,4,20000,10),indj_all(5,4,20000,10)
+   integer :: numCC_type(10)
    ! integer :: jmu_b(10,5000),itype_b(10,5000)
-   ! integer :: numCC_type(10)
    ! integer :: indi(10,10),indj(10,10),ind(10,10)
    ! integer :: mu(10),rank(10)
    ! integer :: iflag_ti(10,10),iflag_tj(10,10)
@@ -37,13 +38,39 @@ contains
       integer, intent(in) :: ff_idx
 
       ! gen_MTP_feature.in
-      Rc_M=ff(ff_idx)%ff_Rc_M
-      do itype=1,ff(ff_idx)%ff_num_type
-         iat_type(itype)=ff(ff_idx)%ff_iat_type(itype)
-         Rc_type(itype)=ff(ff_idx)%ff_Rc_type(itype)
-         Rm_type(itype)=ff(ff_idx)%ff_Rm_type(itype)
-      enddo
-      E_tolerance=ff(ff_idx)%ff_E_tolerance
+      if (iflag_model.eq.1) then
+         Rc_M=li_ff(ff_idx)%ff_Rc_M
+         m_neigh=li_ff(ff_idx)%ff_max_neigh
+         iat_type=li_ff(ff_idx)%ff_iat_type
+         Rc_type=li_ff(ff_idx)%ff_Rc_type
+         Rm_type=li_ff(ff_idx)%ff_Rm_type
+         E_tolerance=li_ff(ff_idx)%ff_E_tolerance
+
+         numCC_type=li_numCC_type
+         numT_all=li_numT_all
+         rank_all=li_rank_all
+         mu_all=li_mu_all
+         jmu_b_all=li_jmu_b_all
+         itype_b_all=li_itype_b_all
+         indi_all=li_indi_all
+         indj_all=li_indj_all
+      else if (iflag_model.eq.3) then
+         Rc_M=nn_ff(ff_idx)%nn_feat_5_para%Rc_M
+         m_neigh=nn_ff(ff_idx)%ff_max_neigh
+         iat_type=nn_ff(ff_idx)%nn_feat_5_para%iat_type
+         Rc_type=nn_ff(ff_idx)%nn_feat_5_para%Rc_type
+         Rm_type=nn_ff(ff_idx)%nn_feat_5_para%Rm_type
+         E_tolerance=nn_ff(ff_idx)%nn_feat_5_para%E_tolerance
+
+         numCC_type=nn_numCC_type
+         numT_all=nn_numT_all
+         rank_all=nn_rank_all
+         mu_all=nn_mu_all
+         jmu_b_all=nn_jmu_b_all
+         itype_b_all=nn_itype_b_all
+         indi_all=nn_indi_all
+         indj_all=nn_indj_all
+      endif
 
       nfeat0m=0
       do itype=1,ntypes
@@ -57,8 +84,8 @@ contains
    subroutine set_image_info_type5(ff_idx)
       integer, intent(in) :: ff_idx
 
-      m_neigh=ff(ff_idx)%ff_max_neigh
-      m_neigh5=m_neigh
+      ! m_neigh=li_ff(ff_idx)%ff_max_neigh
+      ! m_neigh5=m_neigh
       natom5=natoms
 
    end subroutine set_image_info_type5

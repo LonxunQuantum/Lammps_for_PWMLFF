@@ -3,22 +3,23 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
    use IFPORT
    use mod_data, only : natoms, nall, ntypes, iflag_model
    use calc_ftype1, only : feat_M1,dfeat_M1,nfeat0M1,gen_feature_type1, &
-      num_neigh_alltypeM1,list_neigh_alltypeM1,natom1,m_neigh1
+      num_neigh_alltypeM1,list_neigh_alltypeM1,natom1
    use calc_ftype2, only : feat_M2,dfeat_M2,nfeat0M2,gen_feature_type2, &
-      num_neigh_alltypeM2,list_neigh_alltypeM2,natom2,m_neigh2
+      num_neigh_alltypeM2,list_neigh_alltypeM2,natom2
    use calc_2bgauss_feature, only : feat_M3,dfeat_M3,nfeat0M3,gen_feature_2bgauss, &
-      num_neigh_alltypeM3,list_neigh_alltypeM3,natom3,m_neigh3
+      num_neigh_alltypeM3,list_neigh_alltypeM3,natom3
    use calc_3bcos_feature, only : feat_M4,dfeat_M4,nfeat0M4,gen_3bcos_feature, &
-      num_neigh_alltypeM4,list_neigh_alltypeM4,natom4,m_neigh4
+      num_neigh_alltypeM4,list_neigh_alltypeM4,natom4
    use calc_MTP_feature, only : feat_M5,dfeat_M5,nfeat0M5,gen_MTP_feature, &
-      num_neigh_alltypeM5,list_neigh_alltypeM5,natom5,m_neigh5
+      num_neigh_alltypeM5,list_neigh_alltypeM5,natom5
    use calc_SNAP_feature, only : feat_M6,dfeat_M6,nfeat0M6,gen_SNAP_feature, &
-      num_neigh_alltypeM6,list_neigh_alltypeM6,natom6,m_neigh6
+      num_neigh_alltypeM6,list_neigh_alltypeM6,natom6
    use calc_deepMD1_feature, only : feat_M7,dfeat_M7,nfeat0M7,gen_deepMD1_feature, &
-      num_neigh_alltypeM7,list_neigh_alltypeM7,natom7,m_neigh7
+      num_neigh_alltypeM7,list_neigh_alltypeM7,natom7
    use calc_deepMD2_feature, only : feat_M8,dfeat_M8,nfeat0M8,gen_deepMD2_feature,  &
-      num_neigh_alltypeM8,list_neigh_alltypeM8,natom8,m_neigh8
+      num_neigh_alltypeM8,list_neigh_alltypeM8,natom8
    use calc_lin, only : cal_energy_force_lin, nfeat_type_l,ifeat_type_l
+   use calc_NN, only : cal_energy_force_NN, nfeat_type_n,ifeat_type_n
    use calc_deepMD, only : cal_energy_force_deepMD
    use mod_m_neigh, only : load_m_neigh,m_neigh
 
@@ -39,7 +40,7 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
    integer :: iat, ii, jj, count
    integer :: nfeat0
    integer :: nfeat_type
-   integer :: ifeat_type(100)
+   integer :: ifeat_type(10)
    integer :: num_neigh_alltypeM_use(natoms)
    integer, allocatable, dimension (:,:) :: list_neigh_alltypeM_use
 
@@ -63,11 +64,16 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
    ! ***************************************
    !              flow1
    ! ***************************************
-   if (iflag_model.eq.1) then
+   if ((iflag_model.eq.1).or.(iflag_model.eq.3)) then
 
       if(iflag_model.eq.1) then
          nfeat_type=nfeat_type_l
          ifeat_type=ifeat_type_l
+      endif
+
+      if(iflag_model.eq.3) then
+         nfeat_type=nfeat_type_n
+         ifeat_type=ifeat_type_n
       endif
 
       nfeat0=0
@@ -112,7 +118,7 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
       do kk = 1, nfeat_type
          if (ifeat_type(kk).eq.1) then
             natom=natom1
-            m_neigh=m_neigh1
+            ! m_neigh=m_neigh1
             num_neigh_alltypeM_use = num_neigh_alltypeM1
             if(allocated(list_neigh_alltypeM_use)) then
                deallocate(list_neigh_alltypeM_use)
@@ -122,7 +128,7 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
          endif
          if (ifeat_type(kk).eq.2) then
             natom=natom2
-            m_neigh=m_neigh2
+            ! m_neigh=m_neigh2
             num_neigh_alltypeM_use = num_neigh_alltypeM2
             if(allocated(list_neigh_alltypeM_use)) then
                deallocate(list_neigh_alltypeM_use)
@@ -132,7 +138,7 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
          endif
          if (ifeat_type(kk).eq.3) then
             natom=natom3
-            m_neigh=m_neigh3
+            ! m_neigh=m_neigh3
             num_neigh_alltypeM_use = num_neigh_alltypeM3
             if(allocated(list_neigh_alltypeM_use)) then
                deallocate(list_neigh_alltypeM_use)
@@ -142,7 +148,7 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
          endif
          if (ifeat_type(kk).eq.4) then
             natom=natom4
-            m_neigh=m_neigh4
+            ! m_neigh=m_neigh4
             num_neigh_alltypeM_use = num_neigh_alltypeM4
             if(allocated(list_neigh_alltypeM_use)) then
                deallocate(list_neigh_alltypeM_use)
@@ -152,7 +158,7 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
          endif
          if (ifeat_type(kk).eq.5) then
             natom=natom5
-            m_neigh=m_neigh5
+            ! m_neigh=m_neigh5
             num_neigh_alltypeM_use = num_neigh_alltypeM5
             if(allocated(list_neigh_alltypeM_use)) then
                deallocate(list_neigh_alltypeM_use)
@@ -162,7 +168,7 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
          endif
          if (ifeat_type(kk).eq.6) then
             natom=natom6
-            m_neigh=m_neigh6
+            ! m_neigh=m_neigh6
             num_neigh_alltypeM_use = num_neigh_alltypeM6
             if(allocated(list_neigh_alltypeM_use)) then
                deallocate(list_neigh_alltypeM_use)
@@ -172,7 +178,7 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
          endif
          if (ifeat_type(kk).eq.7) then
             natom=natom7
-            m_neigh=m_neigh7
+            ! m_neigh=m_neigh7
             num_neigh_alltypeM_use = num_neigh_alltypeM7
             if(allocated(list_neigh_alltypeM_use)) then
                deallocate(list_neigh_alltypeM_use)
@@ -182,7 +188,7 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
          endif
          if (ifeat_type(kk).eq.8) then
             natom=natom8
-            m_neigh=m_neigh8
+            ! m_neigh=m_neigh8
             num_neigh_alltypeM_use = num_neigh_alltypeM8
             if(allocated(list_neigh_alltypeM_use)) then
                deallocate(list_neigh_alltypeM_use)
@@ -404,13 +410,23 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
       ! write(*,*) "fatom: ", fatom(:,1:natoms)
    endif
 
+   if(iflag_model.eq.3) then
+      ! NN model
+      call cal_energy_force_NN(feat,dfeat,num_neigh_alltypeM_use,list_neigh_alltypeM_use,e_atom,Etot,fatom,natom,nfeat0,m_neigh)
+      ! write(*,*) "MLFF predict with NN"
+      ! write(*,*) "Etot: ", Etot
+      ! write(*,*) "e_atom: ", e_atom(1:natoms)
+      ! stop
+      ! write(*,*) "fatom: ", fatom(:,1:natoms)
+   endif
+
    if(iflag_model.eq.5) then
       ! DP model
       call cal_energy_force_deepMD(num_neigh,list_neigh,dR_neigh,Etot,fatom,virial)
       ! write(*,*) "Etot: ", Etot
    endif
 
-   if (iflag_model.eq.1) then
+   if ((iflag_model.eq.1).or.(iflag_model.eq.3)) then
 
       deallocate(feat)
       deallocate(dfeat)

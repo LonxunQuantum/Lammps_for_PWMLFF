@@ -3,17 +3,17 @@
 !**************************************************
 module calc_ftype2
 
-   use li_ff_mod, only: ff
+   use li_ff_mod, only: li_ff
+   use nn_ff_mod, only: nn_ff
 
-   use mod_data, only : natoms, ntypes, catype
+   use mod_data, only : natoms, ntypes, catype, iflag_model
 
    IMPLICIT NONE
-   integer i,itype,itype1,itype2
-   integer max_neigh,max_neigh_M
+   integer :: i,itype,itype1,itype2
+   integer :: max_neigh,max_neigh_M
    real(8) :: E_tolerance
    integer :: recalc_grid
    real(8),allocatable,dimension (:,:,:) :: grid31_2,grid32_2
-   integer :: n3b1_t,n3b2_t,it
    integer :: n3b1_type(100),n3b2_type(100),n3b1m,n3b2m
    real(8) :: Rc_M
 
@@ -40,23 +40,39 @@ contains
       integer :: kkk,k1,k2,k12,ii_f
 
       ! gen_3b_feature.in
-      Rc_M=ff(ff_idx)%ff_Rc_M
-      do i=1,ff(ff_idx)%ff_num_type
-         iat_type(i)=ff(ff_idx)%ff_iat_type(i)
-         Rc_type(i)=ff(ff_idx)%ff_Rc_type(i)
-         Rc2_type(i)=ff(ff_idx)%ff_Rc2_type(i)
-         Rm_type(i)=ff(ff_idx)%ff_Rm_type(i)
-         iflag_grid_type(i)=ff(ff_idx)%ff_iflag_grid_type(i)
-         fact_grid_type(i)=ff(ff_idx)%ff_fact_grid_type(i)
-         dR_grid1_type(i)=ff(ff_idx)%ff_dR_grid1_type(i)
-         dR_grid2_type(i)=ff(ff_idx)%ff_dR_grid2_type(i)
-         n3b1_type(i)=ff(ff_idx)%ff_n3b1_type(i)
-         n3b2_type(i)=ff(ff_idx)%ff_n3b2_type(i)
-      enddo
-
-      E_tolerance=ff(ff_idx)%ff_E_tolerance
-      iflag_ftype=ff(ff_idx)%ff_iflag_ftype
-      recalc_grid=ff(ff_idx)%ff_recalc_grid
+      if (iflag_model.eq.1) then
+         Rc_M=li_ff(ff_idx)%ff_Rc_M
+         m_neigh=li_ff(ff_idx)%ff_max_neigh
+         iat_type=li_ff(ff_idx)%ff_iat_type
+         Rc_type=li_ff(ff_idx)%ff_Rc_type
+         Rc2_type=li_ff(ff_idx)%ff_Rc2_type
+         Rm_type=li_ff(ff_idx)%ff_Rm_type
+         iflag_grid_type=li_ff(ff_idx)%ff_iflag_grid_type
+         fact_grid_type=li_ff(ff_idx)%ff_fact_grid_type
+         dR_grid1_type=li_ff(ff_idx)%ff_dR_grid1_type
+         dR_grid2_type=li_ff(ff_idx)%ff_dR_grid2_type
+         n3b1_type=li_ff(ff_idx)%ff_n3b1_type
+         n3b2_type=li_ff(ff_idx)%ff_n3b2_type
+         E_tolerance=li_ff(ff_idx)%ff_E_tolerance
+         iflag_ftype=li_ff(ff_idx)%ff_iflag_ftype
+         recalc_grid=li_ff(ff_idx)%ff_recalc_grid
+      else if (iflag_model.eq.3) then
+         Rc_M=nn_ff(ff_idx)%nn_feat_2_para%Rc_M
+         m_neigh=nn_ff(ff_idx)%ff_max_neigh
+         iat_type=nn_ff(ff_idx)%nn_feat_2_para%iat_type
+         Rc_type=nn_ff(ff_idx)%nn_feat_2_para%Rc_type
+         Rc2_type=nn_ff(ff_idx)%nn_feat_2_para%Rc2_type
+         Rm_type=nn_ff(ff_idx)%nn_feat_2_para%Rm_type
+         iflag_grid_type=nn_ff(ff_idx)%nn_feat_2_para%iflag_grid_type
+         fact_grid_type=nn_ff(ff_idx)%nn_feat_2_para%fact_grid_type
+         dR_grid1_type=nn_ff(ff_idx)%nn_feat_2_para%dR_grid1_type
+         dR_grid2_type=nn_ff(ff_idx)%nn_feat_2_para%dR_grid2_type
+         n3b1_type=nn_ff(ff_idx)%nn_feat_2_para%n3b1_type
+         n3b2_type=nn_ff(ff_idx)%nn_feat_2_para%n3b2_type
+         E_tolerance=nn_ff(ff_idx)%nn_feat_2_para%E_tolerance
+         iflag_ftype=nn_ff(ff_idx)%nn_feat_2_para%iflag_ftype
+         recalc_grid=nn_ff(ff_idx)%nn_feat_2_para%recalc_grid
+      endif
 
       ! ccccccccccccccccccccccccccccccccccccccccccccccccc
       ! calculate features of all types
@@ -133,19 +149,27 @@ contains
             ! for iflag_grid.eq.3, the grid is just read in.
             ! read grid3b_cb12_type3, grid3b_b1b2_type3
             ! For each point, it just have two numbers, r1,r2, indicating the region of the sin peak function.
-            n3b1_t=ff(ff_idx)%n3b1_tmp
-            do i=1,n3b1
-               it=ff(ff_idx)%n3b1_tmp_idx
-               grid31_2(1,i,kkk)=ff(ff_idx)%ff_grid31_2(1,i,kkk)
-               grid31_2(2,i,kkk)=ff(ff_idx)%ff_grid31_2(2,i,kkk)
-            enddo
+            if (iflag_model.eq.1) then
+               do i=1,n3b1
+                  grid31_2(1,i,kkk)=li_ff(ff_idx)%ff_grid31_2(1,i,kkk)
+                  grid31_2(2,i,kkk)=li_ff(ff_idx)%ff_grid31_2(2,i,kkk)
+               enddo
 
-            n3b2_t=ff(ff_idx)%n3b2_tmp
-            do i=1,n3b2
-               it=ff(ff_idx)%n3b2_tmp_idx
-               grid32_2(1,i,kkk)=ff(ff_idx)%ff_grid32_2(1,i,kkk)
-               grid32_2(2,i,kkk)=ff(ff_idx)%ff_grid32_2(2,i,kkk)
-            enddo
+               do i=1,n3b2
+                  grid32_2(1,i,kkk)=li_ff(ff_idx)%ff_grid32_2(1,i,kkk)
+                  grid32_2(2,i,kkk)=li_ff(ff_idx)%ff_grid32_2(2,i,kkk)
+               enddo
+            else if (iflag_model.eq.3) then
+               do i=1,n3b1
+                  grid31_2(1,i,kkk)=nn_ff(ff_idx)%nn_feat_2_para%grid31_2(1,i,kkk)
+                  grid31_2(2,i,kkk)=nn_ff(ff_idx)%nn_feat_2_para%grid31_2(2,i,kkk)
+               enddo
+
+               do i=1,n3b2
+                  grid32_2(1,i,kkk)=nn_ff(ff_idx)%nn_feat_2_para%grid32_2(1,i,kkk)
+                  grid32_2(2,i,kkk)=nn_ff(ff_idx)%nn_feat_2_para%grid32_2(2,i,kkk)
+               enddo
+            endif
 
          endif
       enddo     ! kkk=1,ntypes
@@ -158,8 +182,12 @@ contains
    subroutine set_image_info_type2(ff_idx)
       integer, intent(in) :: ff_idx
 
-      m_neigh=ff(ff_idx)%ff_max_neigh
-      m_neigh2=m_neigh
+      ! if (iflag_model.eq.1) then
+      !    m_neigh=li_ff(ff_idx)%ff_max_neigh
+      ! else if (iflag_model.eq.3) then
+      !    m_neigh=nn_ff(ff_idx)%ff_max_neigh
+      ! endif
+      ! m_neigh2=m_neigh
       natom2=natoms
 
    end subroutine set_image_info_type2

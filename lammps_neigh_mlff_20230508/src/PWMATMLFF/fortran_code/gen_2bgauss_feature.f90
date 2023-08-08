@@ -1,8 +1,9 @@
 module calc_2bgauss_feature
 
-   use li_ff_mod, only: ff
+   use li_ff_mod, only: li_ff
+   use nn_ff_mod, only: nn_ff
 
-   use mod_data, only : natoms, ntypes, catype
+   use mod_data, only : natoms, ntypes, catype, iflag_model
 
    IMPLICIT NONE
    integer :: i,j,itype
@@ -31,18 +32,25 @@ contains
       integer :: kkk
 
       ! gen_2bgauss_feature.in
-      Rc_M=ff(ff_idx)%ff_Rc_M
-      do i=1,ff(ff_idx)%ff_num_type
-         iat_type(i)=ff(ff_idx)%ff_iat_type(i)
-         Rc_type(i)=ff(ff_idx)%ff_Rc_type(i)
-         n2b_type(i)=ff(ff_idx)%ff_n2b_type(i)
-         do j=1,n2b_type(i)
-            grid2(j,i)=ff(ff_idx)%ff_grid2(j,i)
-            wgauss(j,i)=ff(ff_idx)%ff_wgauss(j,i)
-         enddo
-
-      enddo
-      E_tolerance=ff(ff_idx)%ff_E_tolerance
+      if (iflag_model.eq.1) then
+         Rc_M=li_ff(ff_idx)%ff_Rc_M
+         m_neigh=li_ff(ff_idx)%ff_max_neigh
+         iat_type=li_ff(ff_idx)%ff_iat_type
+         Rc_type=li_ff(ff_idx)%ff_Rc_type
+         n2b_type=li_ff(ff_idx)%ff_n2b_type
+         grid2=li_ff(ff_idx)%ff_grid2
+         wgauss=li_ff(ff_idx)%ff_wgauss
+         E_tolerance=li_ff(ff_idx)%ff_E_tolerance
+      else if (iflag_model.eq.3) then
+         Rc_M=nn_ff(ff_idx)%nn_feat_3_para%Rc_M
+         m_neigh=nn_ff(ff_idx)%ff_max_neigh
+         iat_type=nn_ff(ff_idx)%nn_feat_3_para%iat_type
+         Rc_type=nn_ff(ff_idx)%nn_feat_3_para%Rc_type
+         n2b_type=nn_ff(ff_idx)%nn_feat_3_para%n2b_type
+         grid2=nn_ff(ff_idx)%nn_feat_3_para%grid2
+         wgauss=nn_ff(ff_idx)%nn_feat_3_para%wgauss
+         E_tolerance=nn_ff(ff_idx)%nn_feat_3_para%E_tolerance
+      endif
 
       !cccccccccccccccccccccccccccccccccccccccc
       ! calculate features of all types
@@ -62,8 +70,8 @@ contains
    subroutine set_image_info_type3(ff_idx)
       integer, intent(in) :: ff_idx
 
-      m_neigh=ff(ff_idx)%ff_max_neigh
-      m_neigh3=m_neigh
+      ! m_neigh=li_ff(ff_idx)%ff_max_neigh
+      ! m_neigh3=m_neigh
       natom3=natoms
 
    end subroutine set_image_info_type3
@@ -192,9 +200,9 @@ contains
       nfeat0M3=nfeat0m    ! the number of features for feature type 1
       !ccccccccccccccccccccccccccccccccccccccccccccc
 
-    !   deallocate(list_neigh)
-    !   deallocate(dR_neigh)
-    !   deallocate(num_neigh)
+      !   deallocate(list_neigh)
+      !   deallocate(dR_neigh)
+      !   deallocate(num_neigh)
       deallocate(list_neigh_alltype)
       deallocate(num_neigh_alltype)
 

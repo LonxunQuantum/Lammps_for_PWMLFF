@@ -2,15 +2,15 @@ module calc_ftype1
    ! ******************************************
    !      feature calc on a SINGLE core
    ! ******************************************
-   use li_ff_mod, only: ff
+   use li_ff_mod, only: li_ff
+   use nn_ff_mod, only: nn_ff
 
-   use mod_data, only : natoms, ntypes, catype
+   use mod_data, only : natoms, ntypes, catype, iflag_model
 
    IMPLICIT NONE
    integer :: i,itype
    integer :: max_neigh,max_neigh_M
    integer :: recalc_grid
-   integer :: n2b_t,it
    integer :: iat_type(100)
    integer :: n2b_type(100),n2bm                              ! numOf2bfeat
    real(8) :: Rc_M
@@ -39,24 +39,34 @@ contains
       integer :: kkk
 
       ! gen_2b_feature.in
-      Rc_M=ff(ff_idx)%ff_Rc_M
-      ! m_neigh=ff(ff_idx)%ff_max_neigh
-      ! ntype=ff(ff_idx)%ff_num_type
-      do i=1,ff(ff_idx)%ff_num_type
-         iat_type(i)=ff(ff_idx)%ff_iat_type(i)
-         Rc_type(i)=ff(ff_idx)%ff_Rc_type(i)
-         Rm_type(i)=ff(ff_idx)%ff_Rm_type(i)
-         iflag_grid_type(i)=ff(ff_idx)%ff_iflag_grid_type(i)
-         fact_grid_type(i)=ff(ff_idx)%ff_fact_grid_type(i)
-         dR_grid1_type(i)=ff(ff_idx)%ff_dR_grid1_type(i)
-         n2b_type(i)=ff(ff_idx)%ff_n2b_type(i)
-      enddo
+      if (iflag_model.eq.1) then
+         Rc_M=li_ff(ff_idx)%ff_Rc_M
+         m_neigh=li_ff(ff_idx)%ff_max_neigh
+         ! ntype=li_ff(ff_idx)%ff_num_type
+         iat_type=li_ff(ff_idx)%ff_iat_type
+         Rc_type=li_ff(ff_idx)%ff_Rc_type
+         Rm_type=li_ff(ff_idx)%ff_Rm_type
+         iflag_grid_type=li_ff(ff_idx)%ff_iflag_grid_type
+         fact_grid_type=li_ff(ff_idx)%ff_fact_grid_type
+         dR_grid1_type=li_ff(ff_idx)%ff_dR_grid1_type
+         n2b_type=li_ff(ff_idx)%ff_n2b_type
+         E_tolerance=li_ff(ff_idx)%ff_E_tolerance
+         iflag_ftype=li_ff(ff_idx)%ff_iflag_ftype
+         recalc_grid=li_ff(ff_idx)%ff_recalc_grid
+      else if (iflag_model.eq.3) then
+         Rc_M=nn_ff(ff_idx)%nn_feat_1_para%Rc_M
+         m_neigh=nn_ff(ff_idx)%ff_max_neigh
+         iat_type=nn_ff(ff_idx)%nn_feat_1_para%iat_type
+         Rc_type=nn_ff(ff_idx)%nn_feat_1_para%Rc_type
+         iflag_grid_type=nn_ff(ff_idx)%nn_feat_1_para%iflag_grid_type
+         fact_grid_type=nn_ff(ff_idx)%nn_feat_1_para%fact_grid_type
+         dR_grid1_type=nn_ff(ff_idx)%nn_feat_1_para%dR_grid1_type
+         n2b_type=nn_ff(ff_idx)%nn_feat_1_para%n2b_type
+         E_tolerance=nn_ff(ff_idx)%nn_feat_1_para%E_tolerance
+         iflag_ftype=nn_ff(ff_idx)%nn_feat_1_para%iflag_ftype
+         recalc_grid=nn_ff(ff_idx)%nn_feat_1_para%recalc_grid
+      endif
 
-      E_tolerance=ff(ff_idx)%ff_E_tolerance
-      iflag_ftype=ff(ff_idx)%ff_iflag_ftype
-      recalc_grid=ff(ff_idx)%ff_recalc_grid
-
-      ! m_neigh1=m_neigh
       ! ccccccccccccccccccccccccccccccccccccccccccccccccc
       ! calculate features of all types
       n2bm=0
@@ -74,7 +84,7 @@ contains
       if (.not.allocated(grid2_2)) then
          allocate(grid2_2(2,n2bm+1,ntypes))
       endif
-      ! grid2_2=ff(ff_idx)%ff_grid2_2
+      ! grid2_2=li_ff(ff_idx)%ff_grid2_2
 
       do kkk=1,ntypes    ! center atom
          iflag_grid=iflag_grid_type(kkk)
@@ -82,12 +92,17 @@ contains
 
          if(iflag_grid.eq.3) then
             ! read grid2b_type3
-            n2b_t=ff(ff_idx)%n2b_tmp
-            do i=1,n2b
-               it=ff(ff_idx)%n2b_tmp_idx
-               grid2_2(1,i,kkk)=ff(ff_idx)%ff_grid2_2(1,i,kkk)
-               grid2_2(2,i,kkk)=ff(ff_idx)%ff_grid2_2(2,i,kkk)
-            enddo
+            if (iflag_model.eq.1) then
+               do i=1,n2b
+                  grid2_2(1,i,kkk)=li_ff(ff_idx)%ff_grid2_2(1,i,kkk)
+                  grid2_2(2,i,kkk)=li_ff(ff_idx)%ff_grid2_2(2,i,kkk)
+               enddo
+            else if (iflag_model.eq.3) then
+               do i=1,n2b
+                  grid2_2(1,i,kkk)=nn_ff(ff_idx)%nn_feat_1_para%grid2_2(1,i,kkk)
+                  grid2_2(2,i,kkk)=nn_ff(ff_idx)%nn_feat_1_para%grid2_2(2,i,kkk)
+               enddo
+            endif
          endif
       enddo ! kkk=1,ntypes
 
@@ -98,8 +113,12 @@ contains
    subroutine set_image_info_type1(ff_idx)
       integer, intent(in) :: ff_idx
 
-      m_neigh=ff(ff_idx)%ff_max_neigh
-      m_neigh1=m_neigh
+      ! if (iflag_model.eq.1) then
+      !    m_neigh=li_ff(ff_idx)%ff_max_neigh
+      ! else if (iflag_model.eq.3) then
+      !    m_neigh=nn_ff(ff_idx)%ff_max_neigh
+      ! endif
+      ! m_neigh1=m_neigh
       natom1=natoms
 
    end subroutine set_image_info_type1
