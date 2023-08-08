@@ -30,3 +30,12 @@
 *.exe
 *.out
 *.app
+
+# Generated files
+# EXAMPLES/*
+lammps_neigh_mlff_20230508/src/PWMATMLFF/fortran_code/test.f90
+lammps_neigh_mlff_20230508/src/PWMATMLFF/fortran_code/test
+lammps_neigh_mlff_20230508/src/PWMATMLFF/fortran_code/ff_mod_bk.f90
+lammps_neigh_mlff_20230508/src/PWMATMLFF/fortran_code/ff_mod_bk2.f90
+lammps_neigh_mlff_20230508/src/PWMATMLFF/fortran_code/myforcefield.ff
+lammps_neigh_mlff_20230508/src/PWMATMLFF/fortran_code/ff_mod_bk3.f90

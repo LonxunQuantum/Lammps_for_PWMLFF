@@ -8,7 +8,7 @@ module calc_deepMD_f
     IMPLICIT NONE
 
     !ccccccccccccccccccccc  The variables to be used in global feature type
-    integer m_neigh
+    integer :: m_neigh,m_neigh_t5
     
     integer :: dp_M2
     real*8 Rc_type(100), R_cs(100)
@@ -39,7 +39,7 @@ module calc_deepMD_f
         integer, intent(in) :: ff_idx        
         
         m_neigh = ff(ff_idx)%dp_ff_max_neigh
-        
+        m_neigh_t5 = m_neigh
         allocate(s_neigh(m_neigh,ntypes,natoms))
         allocate(ds_neigh(3,m_neigh,ntypes,natoms))
         allocate(dxyz_neigh(4,m_neigh,ntypes,natoms))

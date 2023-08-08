@@ -98,7 +98,6 @@ module dp_ff_mod
       ! reading feat.info part
       open(10,file=temp)
       read(10,*) ff(ff_idx)%dp_ff_model_idx
-      
       if (ff(ff_idx)%dp_ff_model_idx.ne.5) then
         write(*,*) "Model type error. Should be 5"
         stop
@@ -114,9 +113,10 @@ module dp_ff_mod
       
       ! reading embedding net part
       read(10,*) ff(ff_idx)%dp_ff_ntype_pair
-      read(10,*) ff(ff_idx)%dp_ff_nlayer_em   ! _em: embedding
+      read(10,*) ff(ff_idx)%dp_ff_nlayer_em   ! _em: embedding  3
       read(10,*) (ff(ff_idx)%dp_ff_node_em(i), &
-                   i=1, ff(ff_idx)%dp_ff_nlayer_em+1)
+                   i=1, ff(ff_idx)%dp_ff_nlayer_em+1)   ! 1 25 25 25
+
       !enddo 
 
       if(ff(ff_idx)%dp_ff_ntype_pair.ne.ff(ff_idx)%dp_ff_num_type**2) then
