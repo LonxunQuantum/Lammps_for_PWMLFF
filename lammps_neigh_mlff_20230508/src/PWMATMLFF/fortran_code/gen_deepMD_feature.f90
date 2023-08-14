@@ -3,7 +3,7 @@ module calc_deepMD_f
     ! original DP bug, and we keep the bug here. 
     use dp_ff_mod, only: ff 
 
-    use mod_data, only : natoms, ntypes, catype 
+    use mod_data, only : natoms, ntypes, catype, atype 
 
     IMPLICIT NONE
 
@@ -22,17 +22,53 @@ module calc_deepMD_f
 
     subroutine load_model_deepMD_f(ff_idx)
         integer, intent(in) :: ff_idx        
-        integer :: i
+        integer :: i,itype
+        integer :: dp_atype(100)  !每一种原子的原子属于第几种原子
+        integer :: iitype_count  ! Counter for matching itypes
+        integer :: sliced_itype1
+        integer, allocatable :: iitype_list(:)
+        logical, allocatable :: itype_added(:)
 
         dp_M2 = ff(ff_idx)%dp_ff_M2
 
+        ! do i=1,ff(ff_idx)%dp_ff_num_type
+        !   Rc_type(i) = ff(ff_idx)%dp_ff_Rc_type(i)
+        !   R_cs(i) = ff(ff_idx)%dp_ff_R_cs(i)
+        !   ave_shift(:,i) = ff(ff_idx)%dp_ff_ave_shift(:,i) 
+        !   ave_norm(:,i) = ff(ff_idx)%dp_ff_ave_norm(:,i) 
+        ! enddo
+        ! get atom type
         do i=1,ff(ff_idx)%dp_ff_num_type
-          Rc_type(i) = ff(ff_idx)%dp_ff_Rc_type(i)
-          R_cs(i) = ff(ff_idx)%dp_ff_R_cs(i)
-          ave_shift(:,i) = ff(ff_idx)%dp_ff_ave_shift(:,i) 
-          ave_norm(:,i) = ff(ff_idx)%dp_ff_ave_norm(:,i) 
+          dp_atype(i) = ff(ff_idx)%dp_ff_itype_atom(i)
+        enddo
+        ! ***************** atom_type to itype_list *************
+      allocate(iitype_list(ff(ff_idx)%dp_ff_num_type))
+      allocate(itype_added(ff(ff_idx)%dp_ff_num_type))
+
+      iitype_count = 0
+      itype_added = .false.
+      do i = 1, natoms
+         do itype = 1, ff(ff_idx)%dp_ff_num_type
+            if (.not. itype_added(itype) .and. dp_atype(itype)==atype(i)) then
+               itype_added(itype) = .true.
+               iitype_count = iitype_count + 1
+               iitype_list(iitype_count) = itype
+            end if
+         end do
+      enddo
+
+      ! ***************** end atom_type to itype_list *********
+
+        do i=1,iitype_count
+          sliced_itype1 = iitype_list(i)
+          Rc_type(i) = ff(ff_idx)%dp_ff_Rc_type(sliced_itype1)
+          R_cs(i) = ff(ff_idx)%dp_ff_R_cs(sliced_itype1)
+          ave_shift(:,i) = ff(ff_idx)%dp_ff_ave_shift(:,sliced_itype1) 
+          ave_norm(:,i) = ff(ff_idx)%dp_ff_ave_norm(:,sliced_itype1) 
         enddo
 
+        ! deallocate(iitype_list)
+        ! deallocate(itype_added)
     end subroutine load_model_deepMD_f    
 
     subroutine set_image_info_deepMD_f(ff_idx)
@@ -64,7 +100,8 @@ module calc_deepMD_f
         !call find_neighbore(iatom,natom,xatom,AL,Rc_type,num_neigh,list_neigh, &
         !    dR_neigh,iat_neigh,ntype,iat_type,m_neigh,Rc_M,map2neigh_M,list_neigh_M, &
         !    num_neigh_M,iat_neigh_M,inode,nnodes)
-        
+
+
         pi=4*datan(1.d0)
         dxyz_dx_neigh=0.d0
 
@@ -97,7 +134,6 @@ module calc_deepMD_f
                 s=0.d0
                 ds=0.d0
               endif
-                    
               dxyz_neigh(1,j,itype,iat)=(s-ave_shift(1,itype1))/ave_norm(1,itype1)
               dxyz_neigh(2,j,itype,iat)=(dR_neigh(1,j,itype,iat)*s/r-ave_shift(2,itype1))/ave_norm(2,itype1)
               dxyz_neigh(3,j,itype,iat)=(dR_neigh(2,j,itype,iat)*s/r-ave_shift(3,itype1))/ave_norm(3,itype1)

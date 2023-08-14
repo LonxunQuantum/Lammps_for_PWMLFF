@@ -64,7 +64,7 @@ subroutine f2c_calc_energy_force(i_model_lvn, &
    ! write(*,*) "ntypes ", intypes
    ! write(*,*) "ff_idx ", ff_idx
 
-   ! do i = 1, inall
+   ! do i = 1, inatoms
    !  write(*,*) i, icatype(i), iatype(i)
    ! enddo
 

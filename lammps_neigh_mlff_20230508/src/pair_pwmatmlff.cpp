@@ -28,6 +28,7 @@
 #include <cstdio>
 #include <iostream>
 #include <random>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -49,17 +50,70 @@ void dp_ff_load(char * /*file name*/, int * /*ff index */, int * /*file name len
                 double * /*neighbor cutoff*/);
 
 void li_ff_load(char * /*file name*/, int * /*ff index */, int * /*file name length*/,
-                  double * /*neighbor cutoff*/);
+                double * /*neighbor cutoff*/);
 
 void nn_ff_load(char * /*file name*/, int * /*ff index */, int * /*file name length*/,
-                  double * /*neighbor cutoff*/);
-                  
+                double * /*neighbor cutoff*/);
 
 // ff data destroy
 // pointer of the name string
 void dp_ff_deallocate(int *);
 void li_ff_deallocate(int *);
 void nn_ff_deallocate(int *);
+}
+
+// Function to reorder type_map based on the order of appearance of elements in type_map[type[i] - 1]
+void reorderTypeMap(int *type_map, int *type, int ntypes, int nall)
+{
+  // Vectors to store the unique elements from type_map and type_map[type[i] - 1]
+  std::set<int> uniqueValues;    // Using std::set to record appeared values
+  static int original_order_initialized = 0;    // Variable to check if original_order has been initialized
+  // static int original_order[3];    // To store the original order of type_map for comparison,静态存储期的数组大小必须是常量。
+  static std::vector<int>original_order;        // To store the original order of type_map for comparison,动态分配创建
+  int type_order[ntypes];    // ntypes is the maximum possible number of unique values
+  int ttt[ntypes];           // tmp variable, ntypes is the maximum possible number of unique values
+
+  // Initialize original_order only once
+  if (original_order_initialized == 0) {
+    // for (int i = 0; i < ntypes; i++) {
+    // original_order[i] = type_map[i];
+    // }
+    original_order.assign(type_map, type_map + ntypes);
+    original_order_initialized = 1;
+  }
+
+  // Extract unique elements from type_map[type[i] - 1]
+  int unique_count = 0;
+  for (int i = 0; i < nall; i++) {
+    int value = type_map[type[i] - 1];
+    // printf("@@@%5d%5d%5d%5d\n", i, type[i], value, type_map[type[i] - 1]);
+    if (uniqueValues.find(value) ==
+        uniqueValues.end()) {              // If this value has not appeared before
+      uniqueValues.insert(value);          // Add this value to the set
+      type_order[unique_count] = value;    // Assign the unique value to type_order
+      ttt[type[i] - 1] =
+          original_order[unique_count];    // Assign the unique value from original order to ttt
+      unique_count++;
+    }
+  }
+  // for (int i = 0; i < ntypes; i++) {
+  //   printf("@@@%5d\n", type_order[i]);
+  // }
+
+  // Check if the order in type_order matches with the original_order
+  bool order_matches = true;
+  for (int i = 0; i < unique_count; i++) {
+    if (type_order[i] != original_order[i]) {
+      order_matches = false;
+      break;
+    }
+  }
+
+  // Update type_map based on ttt if the order doesn't match
+  if (!order_matches) {
+    for (int i = 0; i < ntypes; i++) { type_map[i] = ttt[i]; }
+  }
+
 }
 
 PairPWMATMLFF::PairPWMATMLFF(LAMMPS *lmp) : Pair(lmp)
@@ -150,10 +204,13 @@ void PairPWMATMLFF::compute(int eflag, int vflag)
   lattice[6] = h[4];    // xz
   lattice[3] = h[5];    // xy
 
+  // Reorder type_map based on the order of appearance of elements in type_map[type[i] - 1]
+  reorderTypeMap(type_map, type, ntypes, nall);
   for (i = 0; i < nall; i++) {
     // atom->type starts from 1,
     // and type_map index starts from 0;
     itype_atom[i] = type_map[type[i] - 1];
+    // printf("%5d,%5d,%5d,%5d\n", i, type[i], type_map[type[i] - 1], itype_atom[i]);
   }
 
   generate_neighdata();
@@ -312,8 +369,10 @@ void PairPWMATMLFF::coeff(int narg, char **arg)
   }
 
   // read in periodic table index of each atom type
-  for (int i = 0; i < ntypes; i++)
+  for (int i = 0; i < ntypes; i++) {
     type_map[i] = utils::inumeric(FLERR, arg[i + 2 + 2 + num_ff], false, lmp);
+    // printf("@@@%5d%5d%5d%5d\n", i, type[i], type_map[type[i] - 1], type_map[i]);
+  }
 
   // read in the neighbor cutoff for each atom type
   for (int i = 1; i <= ntypes; i++) {

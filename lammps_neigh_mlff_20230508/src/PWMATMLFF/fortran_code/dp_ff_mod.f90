@@ -152,9 +152,13 @@ module dp_ff_mod
             do j1=1,ff(ff_idx)%dp_ff_node_em(ll)
               read(10,*) (ff(ff_idx)%dp_ff_Wij_em(j1,j2,ll,itype2,itype1), &
                            j2=1,ff(ff_idx)%dp_ff_node_em(ll+1))
+                          !  write(6,*) (ff(ff_idx)%dp_ff_Wij_em(j1,1,3,2,2), &
+                          !  j2=1,ff(ff_idx)%dp_ff_node_em(ll+1))
             enddo
             read(10,*) (ff(ff_idx)%dp_ff_B_em(j2,ll,itype2,itype1), &
                          j2=1,ff(ff_idx)%dp_ff_node_em(ll+1))
+                        !  write(6,*) (ff(ff_idx)%dp_ff_B_em(j2,1,1,1), &
+                        !  j2=1,ff(ff_idx)%dp_ff_node_em(ll+1))
           enddo
         enddo
       enddo
