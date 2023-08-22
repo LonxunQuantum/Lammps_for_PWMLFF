@@ -21,6 +21,7 @@ module calc_MTP_feature
    integer,allocatable,dimension (:,:) :: list_neigh_alltypeM5
    integer,allocatable,dimension (:) :: num_neigh_alltypeM5
    integer :: nfeat0M5
+   real(8),allocatable,dimension (:,:,:) :: dR_neigh_alltypeM5
 !cccccccccccccccccccccccccccccccccccccccccccccccc
    integer :: numT_all(20000,10)
    integer :: rank_all(4,20000,10),mu_all(4,20000,10),jmu_b_all(4,20000,10),itype_b_all(4,20000,10)
@@ -106,12 +107,14 @@ contains
       integer,allocatable,dimension (:) :: num_neigh_alltype
       real(8),allocatable,dimension (:,:) :: feat
       real(8),allocatable,dimension (:,:,:,:) :: dfeat
+      real(8),allocatable,dimension (:,:,:) :: dR_neigh_alltype
       !cccccccccccccccccccccccccccccccccccccccccccccccccccc
       if (allocated(dfeat_M5)) then
          deallocate(feat_M5)
          deallocate(dfeat_M5)
          deallocate(list_neigh_alltypeM5)
          deallocate(num_neigh_alltypeM5)
+         deallocate(dR_neigh_alltypeM5)
       endif
 
       ! the dimension of these array, should be changed to natom_n
@@ -124,9 +127,11 @@ contains
       ! allocate(num_neigh(ntypes,natoms))
       allocate(list_neigh_alltype(m_neigh,natoms))
       allocate(num_neigh_alltype(natoms))
+      allocate(dR_neigh_alltype(3,m_neigh,natoms))
 
       allocate(list_neigh_alltypeM5(m_neigh,natoms))
       allocate(num_neigh_alltypeM5(natoms))
+      allocate(dR_neigh_alltypeM5(3,m_neigh,natoms))
       allocate(map2neigh_alltypeM(m_neigh,natoms)) ! from list_neigh(of this feature) to list_neigh_all (of Rc_M
       allocate(list_tmp(m_neigh,ntypes))
 
@@ -166,6 +171,7 @@ contains
                ! list_neigh_alltypeM5(num_M,iat)=list_neigh_M(j,itype,iat)
                list_neigh_alltypeM5(num_M,iat)=list_neigh(j,itype,iat)
                list_tmp(j,itype)=num_M
+               dR_neigh_alltypeM5(:,num_M,iat)=dR_neigh(:,j,itype,iat)
             enddo
          enddo
 

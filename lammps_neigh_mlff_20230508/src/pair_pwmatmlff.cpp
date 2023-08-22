@@ -49,11 +49,10 @@ void dp_ff_load(char * /*file name*/, int * /*ff index */, int * /*file name len
                 double * /*neighbor cutoff*/);
 
 void li_ff_load(char * /*file name*/, int * /*ff index */, int * /*file name length*/,
-                  double * /*neighbor cutoff*/);
+                double * /*neighbor cutoff*/);
 
 void nn_ff_load(char * /*file name*/, int * /*ff index */, int * /*file name length*/,
-                  double * /*neighbor cutoff*/);
-                  
+                double * /*neighbor cutoff*/);
 
 // ff data destroy
 // pointer of the name string

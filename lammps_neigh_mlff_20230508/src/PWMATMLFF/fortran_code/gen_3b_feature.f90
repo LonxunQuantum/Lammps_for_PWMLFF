@@ -31,6 +31,7 @@ module calc_ftype2
    integer,allocatable,dimension (:,:) :: list_neigh_alltypeM2
    integer,allocatable,dimension (:) :: num_neigh_alltypeM2
    integer :: nfeat0M2
+   real(8),allocatable,dimension (:,:,:) :: dR_neigh_alltypeM2
    !cccccccccccccccccccc the variable to be used in global feature type
 
 contains
@@ -210,6 +211,7 @@ contains
       integer,allocatable,dimension (:) :: num_neigh_alltype
       real(8),allocatable,dimension (:,:) :: feat
       real(8),allocatable,dimension (:,:,:,:) :: dfeat
+      real(8),allocatable,dimension (:,:,:) :: dR_neigh_alltype
       !cccccccccccccccccccccccccccccccccccccccccccccccccccc
 
       if (allocated(feat_M2)) then
@@ -224,11 +226,15 @@ contains
       if (allocated(num_neigh_alltypeM2)) then
          deallocate(num_neigh_alltypeM2)
       endif
+      if (allocated(dR_neigh_alltypeM2)) then
+         deallocate(dR_neigh_alltypeM2)
+      endif
 
       allocate(feat_M2(nfeat0m,natoms))
       allocate(dfeat_M2(nfeat0m,natoms,m_neigh,3))
       allocate(list_neigh_alltypeM2(m_neigh,natoms))
       allocate(num_neigh_alltypeM2(natoms))
+      allocate(dR_neigh_alltypeM2(3,m_neigh,natoms))
       ! allocate(list_neigh(m_neigh,ntypes,natoms))
       ! allocate(dR_neigh(3,m_neigh,ntypes,natoms))   ! d(neighbore)-d(center) in xyz
       ! allocate(num_neigh(ntypes,natoms))
@@ -237,6 +243,7 @@ contains
       allocate(num_neigh_M(ntypes,natoms))
       allocate(list_neigh_alltype(m_neigh,natoms))
       allocate(num_neigh_alltype(natoms))
+      allocate(dR_neigh_alltype(3,m_neigh,natoms))
       allocate(map2neigh_alltypeM(m_neigh,natoms)) ! from list_neigh(of this feature) to list_neigh_all (of Rc_M
       allocate(list_tmp(m_neigh,ntypes))
       allocate(feat(nfeat0m,natoms))
@@ -256,7 +263,7 @@ contains
       do iat=1,natoms
          list_neigh_alltype(1,iat)=iat
          list_neigh_alltypeM2(1,iat)=iat
-
+         dR_neigh_alltypeM2(:,1,iat)=0.d0
          num_M=1
          do itype=1,ntypes
             ! do j=1,num_neigh_M(itype,iat)
@@ -269,6 +276,7 @@ contains
                ! list_neigh_alltypeM2(num_M,iat)=list_neigh_M(j,itype,iat)
                list_neigh_alltypeM2(num_M,iat)=list_neigh(j,itype,iat)
                list_tmp(j,itype)=num_M
+               dR_neigh_alltypeM2(:,num_M,iat)=dR_neigh(:,j,itype,iat)
             enddo
          enddo
 
@@ -331,7 +339,7 @@ contains
       ! deallocate(num_neigh)
       deallocate(list_neigh_alltype)
       deallocate(num_neigh_alltype)
-
+      deallocate(dR_neigh_alltype)
       deallocate(list_neigh_M)
       deallocate(num_neigh_M)
       deallocate(map2neigh_M)

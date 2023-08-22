@@ -22,6 +22,7 @@ module calc_3bcos_feature
    integer,allocatable,dimension (:,:) :: list_neigh_alltypeM4
    integer,allocatable,dimension (:) :: num_neigh_alltypeM4
    integer :: nfeat0M4
+   real(8),allocatable,dimension (:,:,:) :: dR_neigh_alltypeM4
 
 
 contains
@@ -99,12 +100,14 @@ contains
       integer,allocatable,dimension (:) :: num_neigh_alltype
       real(8), allocatable,dimension (:,:) :: feat
       real(8), allocatable,dimension (:,:,:,:) :: dfeat
+      real(8),allocatable,dimension (:,:,:) :: dR_neigh_alltype
       !cccccccccccccccccccccccccccccccccccccccccccccccccccc
       if (allocated(dfeat_M4)) then
          deallocate(feat_M4)
          deallocate(dfeat_M4)
          deallocate(list_neigh_alltypeM4)
          deallocate(num_neigh_alltypeM4)
+         deallocate(dR_neigh_alltypeM4)
       endif
 
       allocate(map2neigh_M(m_neigh,ntypes,natoms)) ! from list_neigh(of this feature) to list_neigh_all (of Rc_M
@@ -115,9 +118,11 @@ contains
       !   allocate(dR_neigh(3,m_neigh,ntypes,natoms))   ! d(neighbore)-d(center) in xyz
       allocate(list_neigh_alltype(m_neigh,natoms))
       allocate(num_neigh_alltype(natoms))
-
+      allocate(dR_neigh_alltype(3,m_neigh,natoms))
+      
       allocate(list_neigh_alltypeM4(m_neigh,natoms))
       allocate(num_neigh_alltypeM4(natoms))
+      allocate(dR_neigh_alltypeM4(3,m_neigh,natoms))
       allocate(map2neigh_alltypeM(m_neigh,natoms)) ! from list_neigh(of this feature) to list_neigh_all (of Rc_M
       allocate(list_tmp(m_neigh,ntypes))
 
@@ -153,6 +158,7 @@ contains
                ! list_neigh_alltypeM4(num_M,iat)=list_neigh_M(j,itype,iat)
                list_neigh_alltypeM4(num_M,iat)=list_neigh(j,itype,iat)
                list_tmp(j,itype)=num_M
+               dR_neigh_alltypeM4(:,num_M,iat)=dR_neigh(:,j,itype,iat)
             enddo
          enddo
 

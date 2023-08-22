@@ -21,6 +21,7 @@ module calc_SNAP_feature
    integer,allocatable,dimension (:,:) :: list_neigh_alltypeM6
    integer,allocatable,dimension (:) :: num_neigh_alltypeM6
    integer :: nfeat0M6
+   real(8),allocatable,dimension (:,:,:) :: dR_neigh_alltypeM6
 
    integer :: nsnapw_type(50)    ! the number of weight combination
    real(8) :: snapj_type(50)      !  the J  (can be integer, or hald integer, 1, 1.5)
@@ -157,12 +158,14 @@ contains
       integer,allocatable,dimension (:) :: num_neigh_alltype
       real(8),allocatable,dimension (:,:) :: feat
       real(8),allocatable,dimension (:,:,:,:) :: dfeat
+      real(8),allocatable,dimension (:,:,:) :: dR_neigh_alltype
       !cccccccccccccccccccccccccccccccccccccccccccccccccccc
       if (allocated(dfeat_M6)) then
          deallocate(feat_M6)
          deallocate(dfeat_M6)
          deallocate(list_neigh_alltypeM6)
          deallocate(num_neigh_alltypeM6)
+         deallocate(dR_neigh_alltypeM6)
       endif
 
       ! the dimension of these array, should be changed to natoms
@@ -176,9 +179,11 @@ contains
       !   allocate(num_neigh(ntypes,natoms))
       allocate(list_neigh_alltype(m_neigh,natoms))
       allocate(num_neigh_alltype(natoms))
+      allocate(dR_neigh_alltype(3,m_neigh,natoms))
 
       allocate(list_neigh_alltypeM6(m_neigh,natoms))
       allocate(num_neigh_alltypeM6(natoms))
+      allocate(dR_neigh_alltypeM6(3,m_neigh,natoms))
       allocate(map2neigh_alltypeM(m_neigh,natoms)) ! from list_neigh(of this feature) to list_neigh_all (of Rc_M
       allocate(list_tmp(m_neigh,ntypes))
 
@@ -214,6 +219,7 @@ contains
                !    list_neigh_alltypeM6(num_M,iat)=list_neigh_M(j,itype,iat)
                list_neigh_alltypeM6(num_M,iat)=list_neigh(j,itype,iat)
                list_tmp(j,itype)=num_M
+               dR_neigh_alltypeM6(:,num_M,iat)=dR_neigh(:,j,itype,iat)
             enddo
          enddo
 
