@@ -94,11 +94,14 @@ subroutine find_feature_deepMD1(Rc,Rc2,Rm,weight_rterm, &
                x=pi*(d-Rc2(itype))/(Rc(itype0)-Rc2(itype))
                f2=0.5*(cos(x)+1)
                df2=-0.5*sin(x)*pi/(Rc(itype0)-Rc2(itype))   ! need to add dx/d
+               ! x=(d-Rc2(itype))/(Rc(itype0)-Rc2(itype))
+               ! f2=x*x*x*(-6*x*x+15*x-10)+1
+               ! df2=3*x*x*(-6*x*x+15*x-10)+x*x*x*(-12*x+15)
             endif
 
             s=f2/d
 
-            y=2*Rm(itype)*s-1.d0
+            y=2*Rm(itype)*s-1.d0    !  Rm is the minumum distance(d) for the neighbor
             call calc_chebyshev(y,M1,poly,dpoly)
             do i=1,M1
                dpoly(i)=dpoly(i)*(df2/d-f2/d**2)*2*Rm(itype)  ! need to add dx/d

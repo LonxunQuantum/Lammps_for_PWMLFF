@@ -185,15 +185,17 @@ contains
 
    end subroutine set_image_info_NN
 
-   subroutine cal_energy_force_NN(feat,dfeat,num_neigh,list_neigh,e_atom,Etot,fatom,natom_tmp,nfeat0_tmp,m_neigh_tmp)
+   subroutine cal_energy_force_NN(feat,dfeat,num_neigh,list_neigh,dR_neigh,e_atom,Etot,fatom,virial,natom_tmp,nfeat0_tmp,m_neigh_tmp)
       integer :: natom_tmp,nfeat0_tmp,m_neigh_tmp
       real(8),intent(in) :: feat(nfeat0_tmp,natom_tmp)
       real(8), intent(in) :: dfeat(nfeat0_tmp,natom_tmp,m_neigh_tmp,3)
       integer,intent(in) :: num_neigh(natom_tmp)
       integer,intent(in) :: list_neigh(m_neigh_tmp,natom_tmp)
+      real(8), dimension(3,m_neigh_tmp,natom_tmp), intent(in) :: dR_neigh
       real(8), dimension(natoms), intent(out) :: e_atom
       real(8), intent(out) :: Etot
       real(8), dimension(3, nall), intent(out) :: fatom
+      real(8), dimension(6), intent(out) :: virial
 
       integer :: j,jj
       real(8) :: direct,mean
@@ -371,6 +373,7 @@ contains
       ! **************************************************
       !   force_pred_tmp=0.d0
       fatom=0.d0
+      virial=0.d0
       num = 0
       iat1=0
 
@@ -387,11 +390,19 @@ contains
                sum1=sum1+dEdf_type(j,num(itype),itype)*dfeat(j,iat1,jj,1)*a_scaler(j,itype)
                sum2=sum2+dEdf_type(j,num(itype),itype)*dfeat(j,iat1,jj,2)*a_scaler(j,itype)
                sum3=sum3+dEdf_type(j,num(itype),itype)*dfeat(j,iat1,jj,3)*a_scaler(j,itype)
+
             enddo
             !P=P+sum1*(R(1,iat2)-R(1,i))  (dR(1,j))
             fatom(1,iat2)=fatom(1,iat2)+sum1
             fatom(2,iat2)=fatom(2,iat2)+sum2
             fatom(3,iat2)=fatom(3,iat2)+sum3
+            
+            virial(1) = virial(1) + dR_neigh(1,jj,iat1)*sum1
+            virial(2) = virial(2) + dR_neigh(2,jj,iat1)*sum2
+            virial(3) = virial(3) + dR_neigh(3,jj,iat1)*sum3
+            virial(4) = virial(4) + dR_neigh(1,jj,iat1)*sum2
+            virial(5) = virial(5) + dR_neigh(1,jj,iat1)*sum3
+            virial(6) = virial(6) + dR_neigh(2,jj,iat1)*sum3
          enddo
       enddo
       ! **************************************************

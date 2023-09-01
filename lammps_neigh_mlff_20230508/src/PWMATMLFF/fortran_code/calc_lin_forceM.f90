@@ -113,7 +113,6 @@ contains
 
       enddo
 
-
       allocate(bb(nfeat2tot))
       allocate(bb_type0(nfeat2m,ntypes))
 
@@ -174,7 +173,7 @@ contains
 
    end subroutine set_image_info_lin
 
-   subroutine cal_energy_force_lin(feat,dfeat,num_neigh,list_neigh,e_atom,Etot,fatom,natom_tmp,nfeat0_tmp,m_neigh_tmp)
+   subroutine cal_energy_force_lin(feat,dfeat,num_neigh,list_neigh,dR_neigh,e_atom,Etot,fatom,virial,natom_tmp,nfeat0_tmp,m_neigh_tmp)
 
       integer :: natom_tmp,nfeat0_tmp,m_neigh_tmp
 
@@ -184,10 +183,11 @@ contains
       ! integer, dimension(ntypes,natoms), intent(in) :: num_neigh
       ! integer, dimension(m_neigh,ntypes,natoms), intent(in) :: list_neigh
       integer, dimension(m_neigh_tmp,natom_tmp), intent(in) :: list_neigh
+      real(8), dimension(3,m_neigh_tmp,natom_tmp), intent(in) :: dR_neigh
       real(8), dimension(natoms), intent(out) :: e_atom
       real(8), intent(out) :: Etot
       real(8), dimension(3, nall), intent(out) :: fatom
-      ! real*8, dimension(6), intent(out) :: virial
+      real(8), dimension(6), intent(out) :: virial
 
       integer :: j,jj
       real(8) :: sum
@@ -201,11 +201,12 @@ contains
       real(8),allocatable,dimension(:,:,:) :: dfeat_type
       real(8),allocatable,dimension(:,:,:) :: dfeat2_type
       real(8),allocatable,dimension(:,:,:,:) :: dfeat2
+      real(8),allocatable,dimension(:,:,:) :: dE_dx
 
-      real(8) pi
+      real(8) :: pi
       ! real(8) dE,dFx,dFy,dFz
       ! real(8) rad1,rad2,rad,dx1,dx2,dx3,dx,dy,dz,dd,yy,w22,dEdd,d,w22_1,w22_2,w22F_1,w22F_2
-      integer iat1,iat2
+      integer :: iat,iat1,iat2,itype1,itype2
 
       pi=4*datan(1.d0)
 
@@ -216,6 +217,7 @@ contains
       allocate(dfeat_type(nfeat1m,natoms*m_neigh*3,ntypes))
       allocate(dfeat2_type(nfeat2m,natoms*m_neigh*3,ntypes))
       allocate(dfeat2(nfeat2m,natoms,m_neigh,3))
+      allocate(dE_dx(3,m_neigh,natoms))
 
       ! allocate(energy_pred_lin(natoms))
       allocate(energy_pred_tmp(natoms))
@@ -237,7 +239,7 @@ contains
          itype=catype(i)    ! center atom type:1,2,3...ntypes: classify atom with atom type
          ! itype=iatom_type(i)  ! center atom type:1,2,3...ntypes
          num(itype)=num(itype)+1 ! num(itype) is the number of each atom type itype
-         ind_type(num(itype),itype)=iat1     ! problem in here!
+         ind_type(num(itype),itype)=iat1
          feat_type(:, num(itype), itype)=feat(:, iat1)
       enddo
       ! write(*,*) "catype",catype
@@ -355,6 +357,7 @@ contains
 
       fatom=0.d0
       ! force_pred_tmp=0.d0
+      virial=0.d0
 
       iat1=0
       do i = 1, natoms
@@ -364,15 +367,27 @@ contains
             ! do jj = 1, num_neigh(itype,i)
             ! iat2=list_neigh(jj,itype,i)
             iat2=list_neigh(jj,i)
+            dE_dx=0.d0
             do j = 1, nfeat2(itype)
                fatom(1,iat2)=fatom(1,iat2)+dfeat2(j,iat1,jj,1)*bb_type0(j,itype)
                fatom(2,iat2)=fatom(2,iat2)+dfeat2(j,iat1,jj,2)*bb_type0(j,itype)
                fatom(3,iat2)=fatom(3,iat2)+dfeat2(j,iat1,jj,3)*bb_type0(j,itype)
+
+               dE_dx(1,jj,iat1)=dE_dx(1,jj,iat1)+dfeat2(j,iat1,jj,1)*bb_type0(j,itype)
+               dE_dx(2,jj,iat1)=dE_dx(2,jj,iat1)+dfeat2(j,iat1,jj,2)*bb_type0(j,itype)
+               dE_dx(3,jj,iat1)=dE_dx(3,jj,iat1)+dfeat2(j,iat1,jj,3)*bb_type0(j,itype)
             enddo
+
+            virial(1) = virial(1) + dR_neigh(1,jj,iat1)*dE_dx(1,jj,iat1)
+            virial(2) = virial(2) + dR_neigh(2,jj,iat1)*dE_dx(2,jj,iat1)
+            virial(3) = virial(3) + dR_neigh(3,jj,iat1)*dE_dx(3,jj,iat1)
+            virial(4) = virial(4) + dR_neigh(1,jj,iat1)*dE_dx(2,jj,iat1)
+            virial(5) = virial(5) + dR_neigh(1,jj,iat1)*dE_dx(3,jj,iat1)
+            virial(6) = virial(6) + dR_neigh(2,jj,iat1)*dE_dx(3,jj,iat1)
          enddo
       enddo
 
-!ccccccccccccccccccccccccccccccccccccccccccc
+      !ccccccccccccccccccccccccccccccccccccccccccc
       !       iat1=0
       !       do i=1,natoms
       !          iat1=iat1+1
@@ -446,6 +461,7 @@ contains
       deallocate(dfeat_type)
       deallocate(dfeat2_type)
       deallocate(dfeat2)
+      deallocate(dE_dx)
       ! deallocate(nfeat1)
       ! deallocate(nfeat2)
       ! deallocate(nfeat2i)
