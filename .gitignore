@@ -39,3 +39,5 @@ lammps_neigh_mlff_20230508/src/PWMATMLFF/fortran_code/ff_mod_bk.f90
 lammps_neigh_mlff_20230508/src/PWMATMLFF/fortran_code/ff_mod_bk2.f90
 lammps_neigh_mlff_20230508/src/PWMATMLFF/fortran_code/myforcefield.ff
 lammps_neigh_mlff_20230508/src/PWMATMLFF/fortran_code/ff_mod_bk3.f90
+lammps_neigh_mlff_20230508/src/Obj_mpi/.depend
+lammps_neigh_mlff_20230508/src/lmp_mpi
