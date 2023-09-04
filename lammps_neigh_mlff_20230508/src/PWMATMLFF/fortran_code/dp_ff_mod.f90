@@ -68,13 +68,14 @@ module dp_ff_mod
 
     contains 
         
-    subroutine dp_ff_load(name_ptr, ff_idx, slen, ocut) bind(c,name="dp_ff_load") 
+    subroutine dp_ff_load(name_ptr, ff_idx, slen, ocut, m_neigh) bind(c,name="dp_ff_load") 
       !is_fn_recon = .true. 
 
       character, dimension(300), intent(in) :: name_ptr    ! name string pointer
       integer, intent(in) :: slen            ! length of name string 
       integer, intent(in) :: ff_idx          ! index of ff to be loaded 
-      real*8, intent(out) :: ocut
+      real(8), intent(out) :: ocut
+      integer, intent(out) :: m_neigh
       character(300) temp
       
       !write(*,*) "name_ptr(1) ", name_ptr(1) 
@@ -106,6 +107,8 @@ module dp_ff_mod
       read(10,*) ff(ff_idx)%dp_ff_is_fn_recon 
 
       read(10,*) ff(ff_idx)%dp_ff_num_type, ff(ff_idx)%dp_ff_max_neigh
+
+      m_neigh = ff(1)%dp_ff_max_neigh
       
       do i=1,ff(ff_idx)%dp_ff_num_type
         read(10,*) ff(ff_idx)%dp_ff_itype_atom(i)

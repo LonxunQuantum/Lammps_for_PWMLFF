@@ -148,11 +148,12 @@ module nn_ff_mod
 
 contains
 
-   subroutine nn_ff_load(name_ptr, ff_idx, slen, ocut) bind(c,name="nn_ff_load")
+   subroutine nn_ff_load(name_ptr, ff_idx, slen, ocut, m_neigh) bind(c,name="nn_ff_load")
       character, dimension(300), intent(in) :: name_ptr    ! name string pointer
       integer, intent(in) :: slen            ! length of name string
       integer, intent(in) :: ff_idx          ! index of ff to be loaded
       real(8), intent(out) :: ocut
+      integer, intent(out) :: m_neigh
       character(300) temp
 
       temp = trim(name_ptr(1))
@@ -201,32 +202,32 @@ contains
          ! for feature1 & feature2
          if ((nn_ff(ff_idx)%ff_ifeat_type(kk).eq.1) .or. (nn_ff(ff_idx)%ff_ifeat_type(kk).eq.2)) then
             if (.not. f12_called) then    ! 只在f12未被调用时调用一次
-               call f12(ff_idx,ocut)
+               call f12(ff_idx,ocut,m_neigh)
                f12_called = .true.        ! 设置f12_called为真，表示已经调用了f12
             endif
          endif
          ! for feature3 & feature4
          if ((nn_ff(ff_idx)%ff_ifeat_type(kk).eq.3) .or. (nn_ff(ff_idx)%ff_ifeat_type(kk).eq.4)) then
             if (.not. f34_called) then
-               call f34(ff_idx,ocut)
+               call f34(ff_idx,ocut,m_neigh)
                f34_called = .true.
             endif
          endif
          ! for feature5
          if (nn_ff(ff_idx)%ff_ifeat_type(kk).eq.5) then
-            call f5(ff_idx,ocut)
+            call f5(ff_idx,ocut,m_neigh)
          endif
          ! for feature6
          if (nn_ff(ff_idx)%ff_ifeat_type(kk).eq.6) then
-            call f6(ff_idx,ocut)
+            call f6(ff_idx,ocut,m_neigh)
          endif
          ! for feature7
          if (nn_ff(ff_idx)%ff_ifeat_type(kk).eq.7) then
-            call f7(ff_idx,ocut)
+            call f7(ff_idx,ocut,m_neigh)
          endif
          ! for feature8
          if (nn_ff(ff_idx)%ff_ifeat_type(kk).eq.8) then
-            call f8(ff_idx,ocut)
+            call f8(ff_idx,ocut,m_neigh)
          endif
       enddo
 
@@ -345,12 +346,16 @@ contains
 
    end subroutine nn_ff_load
 
-   subroutine f12(ff_idx,ocut)
+   subroutine f12(ff_idx,ocut,m_neigh)
       integer, intent(in) :: ff_idx          ! index of ff to be loaded
       real(8), intent(out) :: ocut           ! cutoff radius
+      integer, intent(out) :: m_neigh        ! max number of neighbors
 
       ! reading gen_2b_feature.in part
       read(10,*) nn_ff(ff_idx)%nn_feat_1_para%Rc_M, nn_ff(ff_idx)%ff_max_neigh
+      
+      m_neigh = nn_ff(1)%ff_max_neigh
+
       read(10,*) nn_ff(ff_idx)%ff_num_type
 
       do i=1,nn_ff(ff_idx)%ff_num_type
@@ -375,6 +380,9 @@ contains
 
       ! reading gen_3b_feature.in part
       read(10,*) nn_ff(ff_idx)%nn_feat_2_para%Rc_M, nn_ff(ff_idx)%ff_max_neigh
+
+      m_neigh = nn_ff(1)%ff_max_neigh
+
       read(10,*) nn_ff(ff_idx)%ff_num_type
 
       do i=1,nn_ff(ff_idx)%ff_num_type
@@ -544,12 +552,16 @@ contains
 
    end subroutine f12
 
-   subroutine f34(ff_idx,ocut)
+   subroutine f34(ff_idx,ocut,m_neigh)
       integer, intent(in) :: ff_idx          ! index of ff to be loaded
       real(8), intent(out) :: ocut           ! cutoff radius
+      integer, intent(out) :: m_neigh
 
       ! reading gen_2bgauss_feature.in part
       read(10,*) nn_ff(ff_idx)%nn_feat_3_para%Rc_M, nn_ff(ff_idx)%ff_max_neigh
+
+      m_neigh = nn_ff(1)%ff_max_neigh
+
       read(10,*) nn_ff(ff_idx)%ff_num_type
       do i=1,nn_ff(ff_idx)%ff_num_type
          read(10,*) nn_ff(ff_idx)%nn_feat_3_para%iat_type(i)
@@ -569,6 +581,9 @@ contains
 
       ! reading gen_3bcos_feature.in part
       read(10,*) nn_ff(ff_idx)%nn_feat_4_para%Rc_M, nn_ff(ff_idx)%ff_max_neigh
+
+      m_neigh = nn_ff(1)%ff_max_neigh
+
       read(10,*) nn_ff(ff_idx)%ff_num_type
       do i=1,nn_ff(ff_idx)%ff_num_type
          read(10,*) nn_ff(ff_idx)%nn_feat_4_para%iat_type(i)
@@ -593,12 +608,16 @@ contains
 
    end subroutine f34
 
-   subroutine f5(ff_idx,ocut)
+   subroutine f5(ff_idx,ocut,m_neigh)
       integer, intent(in) :: ff_idx          ! index of ff to be loaded
       real(8), intent(out) :: ocut           ! cutoff radius
+      integer, intent(out) :: m_neigh
 
       ! reading gen_MTP_feature.in part
       read(10,*) nn_ff(ff_idx)%nn_feat_5_para%Rc_M, nn_ff(ff_idx)%ff_max_neigh
+
+      m_neigh = nn_ff(1)%ff_max_neigh
+
       read(10,*) nn_ff(ff_idx)%ff_num_type
       do itype=1,nn_ff(ff_idx)%ff_num_type
          read(10,*) nn_ff(ff_idx)%nn_feat_5_para%iat_type(itype)
@@ -727,12 +746,16 @@ contains
 
    end subroutine f5
 
-   subroutine f6(ff_idx,ocut)
+   subroutine f6(ff_idx,ocut,m_neigh)
       integer, intent(in) :: ff_idx          ! index of ff to be loaded
       real(8), intent(out) :: ocut
+      integer, intent(out) :: m_neigh
 
       ! reading gen_SNAP_feature.in part
       read(10,*) nn_ff(ff_idx)%nn_feat_6_para%Rc_M, nn_ff(ff_idx)%ff_max_neigh
+
+      m_neigh = nn_ff(1)%ff_max_neigh
+
       read(10,*) nn_ff(ff_idx)%ff_num_type
       do i=1,nn_ff(ff_idx)%ff_num_type
          read(10,*) nn_ff(ff_idx)%nn_feat_6_para%iat_type(i)
@@ -755,12 +778,16 @@ contains
 
    end subroutine f6
 
-   subroutine f7(ff_idx,ocut)
+   subroutine f7(ff_idx,ocut,m_neigh)
       integer, intent(in) :: ff_idx          ! index of ff to be loaded
       real(8), intent(out) :: ocut
+      integer, intent(out) :: m_neigh
 
       ! reading gen_deepMD1_feature.in part
       read(10,*) nn_ff(ff_idx)%nn_feat_7_para%Rc_M, nn_ff(ff_idx)%ff_max_neigh
+
+      m_neigh = nn_ff(1)%ff_max_neigh
+
       read(10,*) nn_ff(ff_idx)%ff_num_type
       do i=1,nn_ff(ff_idx)%ff_num_type
          read(10,*) nn_ff(ff_idx)%nn_feat_7_para%iat_type(i)
@@ -782,12 +809,16 @@ contains
 
    end subroutine f7
 
-   subroutine f8(ff_idx,ocut)
+   subroutine f8(ff_idx,ocut,m_neigh)
       integer, intent(in) :: ff_idx          ! index of ff to be loaded
       real(8), intent(out) :: ocut
+      integer, intent(out) :: m_neigh
 
       ! reading gen_deepMD2_feature.in part
       read(10,*) nn_ff(ff_idx)%nn_feat_8_para%Rc_M, nn_ff(ff_idx)%ff_max_neigh
+
+      m_neigh = nn_ff(1)%ff_max_neigh
+
       read(10,*) nn_ff(ff_idx)%ff_num_type
       do i=1,nn_ff(ff_idx)%ff_num_type
          read(10,*) nn_ff(ff_idx)%nn_feat_8_para%iat_type(i)

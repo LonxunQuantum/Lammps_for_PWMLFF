@@ -11,7 +11,8 @@ subroutine f2c_calc_energy_force(i_model_lvn, &
    e_tot_out, &
    f_atom_out, &
    virial_out, &
-   ff_idx ) bind(c,name="f2c_calc_energy_force")
+   ff_idx, &
+   m_neigh ) bind(c,name="f2c_calc_energy_force")
 
    !**************************************************
    !  Inference routine run on a SINGLE thread
@@ -37,12 +38,12 @@ subroutine f2c_calc_energy_force(i_model_lvn, &
 
    implicit none
 
-   integer, intent(in) :: i_model_lvn, inatoms, inall, intypes
+   integer, intent(in) :: i_model_lvn, inatoms, inall, intypes, m_neigh
    integer, dimension(inall), intent(in) :: icatype
    integer, dimension(inall), intent(in) :: iatype
    integer, dimension(intypes, inatoms), intent(in) :: inum_neigh
-   integer, dimension(100, intypes, inatoms), intent(in) :: ilist_neigh
-   real*8, dimension(3, 100, intypes, inatoms), intent(in) :: idR_neigh
+   integer, dimension(m_neigh, intypes, inatoms), intent(in) :: ilist_neigh
+   real*8, dimension(3, m_neigh, intypes, inatoms), intent(in) :: idR_neigh
 
    !! $ spend almost two days to change inall to inatoms.
    !! $ inum_neigh value reset to 0.
@@ -87,6 +88,10 @@ subroutine f2c_calc_energy_force(i_model_lvn, &
    atype(1:nall) = iatype(1:nall)     ! periodic table index
    iflag_model = i_model_lvn
 
+   ! write(*,*) 'Dimensions of ilist_neigh:'
+   ! write(*,*) 'm_neigh:', size(ilist_neigh, 1)
+   ! write(*,*) 'intypes:', size(ilist_neigh, 2)
+   ! write(*,*) 'inatoms:', size(ilist_neigh, 3)
    ! ********************************************
    !   Initialization: load control & net paras
    ! ********************************************

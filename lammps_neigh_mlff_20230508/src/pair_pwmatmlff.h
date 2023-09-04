@@ -93,6 +93,7 @@ class PairPWMATMLFF : public Pair
     int imodel;
     int num_ff;
     int type_map[20];
+    int max_neigh_num;
 
     int num_fail;
     int num_cand;

@@ -44,16 +44,16 @@ void f2c_calc_energy_force(int * /*imodel*/, int * /*nlocal*/, int * /*nlocal + 
                            int * /*ntypes*/, int * /*type*/, int * /*itype*/, int * /*num_neigh*/,
                            int * /*list_neigh*/, double * /*dR_neigh*/, double * /*e_atom*/,
                            double * /*e_tot*/, double * /*f*/, double * /*virial*/,
-                           int * /*ff_idx*/);
+                           int * /*ff_idx*/, int * /*max_neigh_num*/);
 // ff data loading
 void dp_ff_load(char * /*file name*/, int * /*ff index */, int * /*file name length*/,
-                double * /*neighbor cutoff*/);
+                double * /*neighbor cutoff*/, int * /*max_neigh_num*/);
 
 void li_ff_load(char * /*file name*/, int * /*ff index */, int * /*file name length*/,
-                double * /*neighbor cutoff*/);
+                double * /*neighbor cutoff*/, int * /*max_neigh_num*/);
 
 void nn_ff_load(char * /*file name*/, int * /*ff index */, int * /*file name length*/,
-                double * /*neighbor cutoff*/);
+                double * /*neighbor cutoff*/, int * /*max_neigh_num*/);
 
 // ff data destroy
 // pointer of the name string
@@ -124,6 +124,7 @@ PairPWMATMLFF::PairPWMATMLFF(LAMMPS *lmp) : Pair(lmp)
   writedata = 1;
 
   imodel = 0;
+  max_neigh_num = 100;
   num_fail = 0;
   num_cand = 0;
   num_success = 0;
@@ -228,7 +229,7 @@ void PairPWMATMLFF::compute(int eflag, int vflag)
     f2c_calc_energy_force(&imodel, &nlocal, &nall, &ntypes, &type[0], &itype_atom[0],
                           &num_neigh[0][0], &list_neigh[0][0][0], &dR_neigh[0][0][0][0],
                           &e_atom_n[ff_idx][0], &e_tot_tmp, &f_n[ff_idx][0][0], &virial_tmp[0],
-                          &tff_idx);
+                          &tff_idx, &max_neigh_num);
     if (ff_idx == 0) {
       e_tot = e_tot_tmp;
       for (i = 0; i < nall; i++)
@@ -306,8 +307,8 @@ void PairPWMATMLFF::allocate()
   memory->create(e_atom, natoms, "pair_pwmatmlff:e_atom");
 
   memory->create(num_neigh, natoms, ntypes, "pair_pwmatmlff:num_neigh");
-  memory->create(list_neigh, natoms, ntypes, 100, "pair_pwmatmlff:list_neigh");
-  memory->create(dR_neigh, natoms, ntypes, 100, 3, "pair_pwmatmlff:dR_neigh");
+  memory->create(list_neigh, natoms, ntypes, max_neigh_num, "pair_pwmatmlff:list_neigh");
+  memory->create(dR_neigh, natoms, ntypes, max_neigh_num, 3, "pair_pwmatmlff:dR_neigh");
 
   atom_config_list.reserve(500);
   config_id.reserve(500);
@@ -318,7 +319,7 @@ void PairPWMATMLFF::settings(int narg, char **arg) {}
 
 void PairPWMATMLFF::coeff(int narg, char **arg)
 {
-  if (!allocated) allocate();
+  // if (!allocated) allocate();
 
   int i;
   int ff_idx, tff_idx;
@@ -361,13 +362,15 @@ void PairPWMATMLFF::coeff(int narg, char **arg)
 
     // fortran index is start from 1
     tff_idx = ff_idx + 1;
-    if (imodel == 1) li_ff_load(arg[2 + 2 + ff_idx], &tff_idx, &name_len, &temp_cut);
-    if (imodel == 3) nn_ff_load(arg[2 + 2 + ff_idx], &tff_idx, &name_len, &temp_cut);
-    if (imodel == 5) dp_ff_load(arg[2 + 2 + ff_idx], &tff_idx, &name_len, &temp_cut);
+    if (imodel == 1) li_ff_load(arg[2 + 2 + ff_idx], &tff_idx, &name_len, &temp_cut, &max_neigh_num);
+    if (imodel == 3) nn_ff_load(arg[2 + 2 + ff_idx], &tff_idx, &name_len, &temp_cut, &max_neigh_num);
+    if (imodel == 5) dp_ff_load(arg[2 + 2 + ff_idx], &tff_idx, &name_len, &temp_cut, &max_neigh_num);
 
     if (comm->me == 0) printf("Force field loaded successfully\n\n");
   }
 
+  if (!allocated) allocate();
+  // printf("@@@ allocate %7d %7d\n", imodel, max_neigh_num);
   // read in periodic table index of each atom type
   for (int i = 0; i < ntypes; i++) {
     type_map[i] = utils::inumeric(FLERR, arg[i + 2 + 2 + num_ff], false, lmp);
@@ -481,7 +484,7 @@ void PairPWMATMLFF::generate_neighdata()
   for (i = 0; i < nlocal; i++) {
     for (j = 0; j < ntypes; j++) {
       num_neigh[i][j] = 0;
-      for (k = 0; k < 100; k++) {
+      for (k = 0; k < max_neigh_num; k++) {
         list_neigh[i][j][k] = 0;
         dR_neigh[i][j][k][0] = 0.0;
         dR_neigh[i][j][k][1] = 0.0;
