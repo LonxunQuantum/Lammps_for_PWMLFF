@@ -238,7 +238,7 @@ module dp_ff_mod
       endif 
 
       !reading gen_dp.in part 
-      read(10,*) ff(ff_idx)%dp_ff_Rc_M, tmp
+      read(10,*) ff(ff_idx)%dp_ff_Rc_M
       read(10,*) ff(ff_idx)%dp_ff_M2 
       read(10,*) tmp 
               
