@@ -20,7 +20,8 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
       num_neigh_alltypeM8,list_neigh_alltypeM8,natom8,dR_neigh_alltypeM8
    use calc_lin, only : cal_energy_force_lin, nfeat_type_l,ifeat_type_l
    use calc_NN, only : cal_energy_force_NN, nfeat_type_n,ifeat_type_n
-   use calc_deepMD, only : cal_energy_force_deepMD
+   use calc_deepMD, only : cal_energy_force_deepMD, cal_energy_force_deepMD_type
+   use calc_deepMD_f, only : is_type_embedding
    use mod_m_neigh, only : load_m_neigh,m_neigh
 
    implicit none
@@ -463,7 +464,11 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
 
    if(iflag_model.eq.5) then
       ! DP model
-      call cal_energy_force_deepMD(num_neigh,list_neigh,dR_neigh,Etot,fatom,virial)
+      if (is_type_embedding .eq. 1) then
+         call cal_energy_force_deepMD_type(num_neigh,list_neigh,dR_neigh,Etot,fatom,virial)
+      else
+         call cal_energy_force_deepMD(num_neigh,list_neigh,dR_neigh,Etot,fatom,virial)
+      endif
       ! write(*,*) "Etot: ", Etot
    endif
 
