@@ -470,6 +470,7 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
          call cal_energy_force_deepMD(num_neigh,list_neigh,dR_neigh,Etot,fatom,virial)
       endif
       ! write(*,*) "Etot: ", Etot
+      ! write(*,*) "fatom: ", fatom(:,1:natoms)
    endif
 
    if ((iflag_model.eq.1).or.(iflag_model.eq.3)) then

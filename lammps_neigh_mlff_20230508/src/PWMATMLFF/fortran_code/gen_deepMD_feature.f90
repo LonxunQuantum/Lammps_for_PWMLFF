@@ -77,7 +77,7 @@ contains
       is_type_embedding = ff(ff_idx)%dp_ff_is_type_embedding
       if (is_type_embedding .eq. 1) then
 
-         allocate(type_embedding(ff(ff_idx)%dp_ff_node_em(1)-1,ff(ff_idx)%dp_ff_num_type))
+         allocate(type_embedding(ff(ff_idx)%dp_ff_node_em(1)-1,iitype_count))
          do i=1,iitype_count ! used here for hybrid model, but still need to be tested
             sliced_itype1 = iitype_list(i)
             type_embedding(:,i) = ff(ff_idx)%dp_ff_type_embedding(:,sliced_itype1)

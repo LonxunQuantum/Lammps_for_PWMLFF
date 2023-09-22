@@ -967,6 +967,7 @@ contains
                   jj=jj+1
                   f_in(:,jj,1)=s_neigh_type(:,j,itype2,iat)
                   f_out(:,jj,1)=s_neigh_type(:,j,itype2,iat)
+                  ! need to check: the itype2 cen be merged in s_neigh_type? 
                   f_d(1,jj,1,itype2)=1.d0
                enddo
             enddo
