@@ -608,14 +608,19 @@ contains
          !
          !   This part is a bit expensive, it will be nice to accelerate it
          nn1=node_em(nlayer_em+1)
-
+         !$acc data copyin(ss, num_neigh, natom_n_type, d_ss, f_back0, iat_ind) create(dE_dx)
+         !$acc kernels async
          do itype2=1,ntypes
+            !$acc loop independent
             do i=1,natom_n_type(itype1)
                iat=iat_ind(i,itype1)
+               !$acc loop
                do j=1,num_neigh(itype2,iat)
                   do m2=1,3
+                     !$acc cache(dE_dx(m2,j,itype2,iat))
                      d_sum2=0.d0
                      do k1=1,nn1
+                        !$acc cache(d_ss(1,m2,k1,j,itype2,i), d_ss(2,m2,k1,j,itype2,i), d_ss(3,m2,k1,j,itype2,i), d_ss(4,m2,k1,j,itype2,i))
                         do k2=1,dp_M2   ! fixed, first index
                            kk=(k1-1)*dp_M2+k2   ! NN feature index
                            ! d_sum=0.d0
@@ -636,7 +641,10 @@ contains
                enddo
             enddo
          enddo ! itype2 end
-
+         !$acc wait
+         !$acc end kernels
+         !$acc update host(dE_dx)
+         !$acc end data
          nn1=node_em(nlayer_em+1)
 
          do itype2=1,ntypes

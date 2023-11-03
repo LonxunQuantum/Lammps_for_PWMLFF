@@ -6,16 +6,19 @@ SHELL = /bin/sh
 # compiler/linker settings
 # specify flags and libraries needed for your compiler
 
-CC =		mpiicpc
+#CC =		mpiicpc
+CC =		mpicxx
 CCFLAGS =	-O3 -std=c++11 -I../PWMATMLFF
 SHFLAGS =	-fPIC
 DEPFLAGS =	-M
 
 #LINK =		mpicxx
 #LINKFLAGS =	-g -O3 -std=c++11
-LINK =		mpiifort
+#LINK =		mpiifort
+LINK =		mpifort
 #LINKFLAGS =	-g -O3 -std=c++11 -cxxlib -nofor_main
-LINKFLAGS =	-O3 -cxxlib -nofor_main -mkl
+#LINKFLAGS =	-O3 -cxxlib -nofor_main -mkl
+LINKFLAGS =	-O3 -L/share/app/nvhpc22.2/Linux_x86_64/22.2/comm_libs/mpi/lib -lmpi_cxx -Mnomain -L${MKLROOT}/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl -lstdc++ -acc 
 LIB =
 SIZE =		size
 
@@ -97,8 +100,10 @@ vpath %.h ..
 #	$(LINK) $(LINKFLAGS) main.o $(EXTRA_PATH) $(LMPLINK) $(EXTRA_LIB) $(LIB) -o $@
 #	$(SIZE) $@
 $(EXE): main.o $(LMPLIB) $(EXTRA_LINK_DEPENDS)
-	$(LINK) $(LINKFLAGS) main.o $(EXTRA_PATH) $(LMPLINK) $(EXTRA_LIB) $(LIB) ../PWMATMLFF/f2c_calc_energy_force.a  -o $@
+	$(LINK) main.o $(EXTRA_PATH) $(LMPLINK) $(EXTRA_LIB) $(LIB) ../PWMATMLFF/f2c_calc_energy_force.a  $(LINKFLAGS) -o $@
 	$(SIZE) $@
+#	$(LINK) main.o $(EXTRA_PATH) ./liblammps_mpi.a $(EXTRA_LIB) $(LIB) ../PWMATMLFF/f2c_calc_energy_force.a $(LINKFLAGS) -o $@
+#	$(SIZE) $@
 
 # Library targets
 

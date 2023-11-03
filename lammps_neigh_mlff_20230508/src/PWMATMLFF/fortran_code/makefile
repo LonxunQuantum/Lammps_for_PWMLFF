@@ -4,17 +4,21 @@
 #all: cmain.x mlff_predict.x main_MD.x pair_qcad.a
 all: f2c_calc_energy_force.a
 
-MPIFC = mpiifort
-MPICXX = mpiicpc
+MPIFC = mpif90
+# MPIFC = mpiifort
+MPICXX = mpicxx
+# MPICXX = mpiicpc
 
 is_mpiifort := $(shell which mpiifort 1>&2 2> /dev/null; echo $$?)
 ifneq ($(is_mpiifort),0)
 	MPIFC=mpif90
 endif
 
-FFLAG = -O3 -I/opt/iotk/src/ -mkl
+# FFLAG = -O3 -I/opt/iotk/src/ -mkl
+FFLAG = -O3 -I/opt/iotk/src/ -acc -Minfo=accel -L${MKLROOT}/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl
 # FFLAG = -g -traceback -C -I/opt/iotk/src/ -mkl -debug all
-CFLAG = -O3 --std=c++11 -mkl -I../
+# CFLAG = -O3 --std=c++11 -mkl -I../
+CFLAG = -O3 --std=c++11 -L${MKLROOT}/lib/intel64 -lmkl_intel_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl -I../
 FLINKFLAG = -cxxlib -nofor_main
 #SRCS = $(wildcard *.f90)
 #OBJ = $(patsubst %.f90,%.o,$(SRCS))

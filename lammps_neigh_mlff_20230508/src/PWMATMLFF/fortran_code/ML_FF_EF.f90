@@ -1,6 +1,6 @@
 subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
    e_atom,Etot,fatom,virial)
-   use IFPORT
+   ! use IFPORT
    use mod_data, only : natoms, nall, ntypes, iflag_model
    use calc_ftype1, only : feat_M1,dfeat_M1,nfeat0M1,gen_feature_type1, &
       num_neigh_alltypeM1,list_neigh_alltypeM1,natom1,dR_neigh_alltypeM1
