@@ -1,0 +1,317 @@
+#include <torch/script.h>
+#include <torch/torch.h>
+#include <iostream>
+#include <chrono>
+#include <cstring>
+
+#include "pair_pwmlff.h"
+
+#include "atom.h"
+#include "comm.h"
+#include "error.h"
+#include "fix.h"
+#include "force.h"
+#include "memory.h"
+#include "neighbor.h"
+#include "neigh_list.h"
+#include "neigh_request.h"
+#include "update.h"
+#include "domain.h"
+
+using namespace LAMMPS_NS;
+using namespace std;
+
+PairPWMLFF::PairPWMLFF(LAMMPS *lmp) : Pair(lmp)
+{
+    writedata = 1;
+    me = comm->me;
+    min_dR = 1000;
+}
+
+PairPWMLFF::~PairPWMLFF()
+{
+    if (allocated) {
+        memory->destroy(setflag);
+        memory->destroy(cutsq);
+        memory->destroy(num_neigh);
+        memory->destroy(list_neigh);
+        memory->destroy(dR_neigh);
+    }
+}
+/* ----------------------------------------------------------------------
+   allocate all arrays
+------------------------------------------------------------------------- */
+void PairPWMLFF::allocate()
+{
+    allocated = 1;
+    int ntypes = atom->ntypes;
+    int natoms = atom->natoms;
+    int n = ntypes + 1;
+
+    memory->create(setflag, n, n, "pair_pwmlff:setflag");
+
+    for (int i = 1; i < n; i++) {
+        for (int j = i; j < n; j++) {
+            setflag[i][j] = 0;
+        }
+    }
+
+    memory->create(cutsq, n, n, "pair_pwmlff:cutsq");
+    memory->create(num_neigh, natoms, ntypes, "pair_pwmlff:num_neigh");
+    memory->create(list_neigh, natoms, ntypes, max_neighbor, "pair_pwmlff:list_neigh");
+    memory->create(dR_neigh, natoms, ntypes, max_neighbor, 3, "pair_pwmlff:dR_neigh");
+}
+
+static bool is_key(const std::string& input) {
+    std::vector<std::string> keys;
+    keys.push_back("out_freq");
+    keys.push_back("out_file");
+
+    for (int ii = 0; ii < keys.size(); ++ii) {
+        if (input == keys[ii]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* ----------------------------------------------------------------------
+   global settings pair_style 
+------------------------------------------------------------------------- */
+
+void PairPWMLFF::settings(int narg, char **arg)
+{
+    if (narg <= 0) error->all(FLERR, "Illegal pair_style command");
+    std::vector<std::string> models;
+
+    int iarg;
+    while (iarg < narg) {
+        if (is_key(arg[iarg])) {
+            break;
+        }
+        iarg++;
+    }
+
+    for (int ii = 0; ii < iarg; ii++) {
+        models.push_back(arg[ii]);
+    }
+
+    if (models.size() == 1) {
+        try 
+        {
+            std::string model_file = models[0];
+            torch::jit::getProfilingMode() = false;
+            module = torch::jit::load(model_file);
+            if (torch::cuda::is_available()) {
+                device = torch::kCUDA;
+            }
+            if (true) {
+                dtype = torch::kFloat32;
+            }
+            module.to(device, dtype);
+            cutoff = module.attr("Rmax").toDouble();
+            max_neighbor = module.attr("max_neighbor").toInt();
+            torch::Device device = torch::kCPU;
+            utils::logmesg(lmp, "PWMLFF model loaded ------> %s", model_file);
+            utils::logmesg(lmp, "INFO IN MLFF-MODEL---->>");
+            utils::logmesg(lmp, "\tModel type:   DP");
+            utils::logmesg(lmp, "\tcutoff :      %f",cutoff);
+            utils::logmesg(lmp, "\tmax_neighbor: %d", max_neighbor);
+        }
+        catch (const c10::Error& e) 
+        {
+        std::cerr << "error loading the model :" << e.msg() << std::endl;
+        }
+    }
+}
+
+/* ----------------------------------------------------------------------
+   set coeffs for one or more type pairs pair_coeff 
+------------------------------------------------------------------------- */
+
+void PairPWMLFF::coeff(int narg, char **arg)
+{
+    int ntype = atom->ntypes;
+    if (!allocated) {allocate();}
+
+    // pair_coeff * * 
+    int ilo, ihi, jlo, jhi;
+    utils::bounds(FLERR, arg[0], 1, atom->ntypes, ilo, jhi, error);
+    utils::bounds(FLERR, arg[1], 1, atom->ntypes, jlo, jhi, error);
+
+    int count = 0;
+    for (int i = ilo; i <= ihi; i++) {
+        for (int j = MAX(jlo,i); j <= jhi; j++) {
+            setflag[i][j] = 1;
+            count++;
+        }
+    }
+
+    auto type_map = module.attr("atom_type").toList();
+    if (ntype > narg - 2 )
+    {
+        error->all(FLERR, "Element mapping not fully set");
+    }
+    for (int ii = 2; ii < narg; ii++) {
+        int temp = std::stoi(arg[ii]);
+        auto iter = std::find(type_map.begin(), type_map.end(), temp);
+        if (iter != type_map.end() || arg[ii] == 0) {
+            type_map.push_back(temp);
+        }
+        else {
+            error->all(FLERR, "This element is not included in the machine learning force field");
+        }
+    }
+
+    if (count == 0) {
+        error->all(FLERR, "Incorrect args for pair coefficients");
+    }
+}
+
+/* ----------------------------------------------------------------------
+   init for one type pair i,j and corresponding j,i
+------------------------------------------------------------------------- */
+double PairPWMLFF::init_one(int i, int j)
+{
+    return cutoff;
+}
+
+void PairPWMLFF::init_style()
+{
+    // Using a nearest neighbor table of type full
+    neighbor->add_request(this, NeighConst::REQ_FULL);
+}
+
+void PairPWMLFF::generate_neighdata()
+{
+  int i, j, k, ii, jj, inum, jnum, itype, jtype;
+  double xtmp, ytmp, ztmp, delx, dely, delz, rsq;
+  int *ilist, *jlist, *numneigh, **firstneigh;
+  int etnum;
+
+  double **x = atom->x;
+  int *type = atom->type;
+  int *tag = atom->tag;
+  int nlocal = atom->nlocal;
+  int ntypes = atom->ntypes;
+
+  double min_dR_all;
+
+  inum = list->inum;
+  ilist = list->ilist;
+  numneigh = list->numneigh;
+  firstneigh = list->firstneigh;
+
+  for (i = 0; i < nlocal; i++) {
+    for (j = 0; j < ntypes; j++) {
+      num_neigh[i][j] = 0;
+      for (k = 0; k < max_neighbor; k++) {
+        list_neigh[i][j][k] = 0;
+        dR_neigh[i][j][k][0] = 0.0;
+        dR_neigh[i][j][k][1] = 0.0;
+        dR_neigh[i][j][k][2] = 0.0;
+      }
+    }
+  }
+
+  min_dR = 1000;
+
+  for (ii = 0; ii < inum; ii++) {
+    i = ilist[ii];
+    xtmp = x[i][0];
+    ytmp = x[i][1];
+    ztmp = x[i][2];
+    itype = type[i];
+    jlist = firstneigh[i];
+    jnum = numneigh[i];
+
+    for (jj = 0; jj < jnum; jj++) {
+      j = jlist[jj];
+
+      delx = x[j][0] - xtmp;
+      dely = x[j][1] - ytmp;
+      delz = x[j][2] - ztmp;
+      rsq = delx * delx + dely * dely + delz * delz;
+      jtype = type[j];
+
+      if (rsq < cutsq[itype][itype]) {
+        etnum = num_neigh[i][jtype - 1];
+        dR_neigh[i][jtype - 1][etnum][0] = delx;
+        dR_neigh[i][jtype - 1][etnum][1] = dely;
+        dR_neigh[i][jtype - 1][etnum][2] = delz;
+        // fortran start from 1
+        list_neigh[i][jtype - 1][etnum] = j + 1;
+        num_neigh[i][jtype - 1] += 1;
+        if (rsq < min_dR) min_dR = rsq;
+      }
+    }
+  }
+
+  MPI_Allreduce(&min_dR, &min_dR_all, 1, MPI_DOUBLE, MPI_MIN, world);
+
+  if (min_dR_all < 0.81) {
+    if (me == 0) printf("@@@ there are two atom too close, min_dR_all = %12.6f\n", min_dR_all);
+    error->universe_all(FLERR, "@@@ pair_pwmatmlff min_dR_all.");
+  }
+
+  printf(" --- CHECK gn --- \n");
+  for (i = 0; i < nlocal; i++) {
+   printf("i   %7d\n", i);
+   for (int t = 0; t < ntypes; t++) {
+     printf("  t   %7d %7d\n", t, num_neigh[i][t]);
+     for (j = 0; j < num_neigh[i][t]; j++)
+       printf("    %7d %9.6f %9.6f %9.6f \n", list_neigh[i][t][j], \
+         dR_neigh[i][t][j][0], dR_neigh[i][t][j][1], dR_neigh[i][t][j][2]);
+   }
+  }
+}
+
+/* ----------------------------------------------------------------------
+   compute force for one atom pair i,j
+------------------------------------------------------------------------- */
+
+void PairPWMLFF::compute(int eflag, int vflag)
+{
+    int i, j;
+    int current_timestep;
+    double e_tot, e_tot_tmp;
+    double virial_tmp[6];
+    double *h = domain->h;
+    double **x = atom->x;
+    double **f = atom->f;
+    int *type = atom->type;
+    int *tag = atom->tag;
+    int nlocal = atom->nlocal;
+    int nall = nlocal + atom->nghost;
+    int ntypes = atom->ntypes;
+    double *virial = force->pair->virial;
+    current_timestep = update->ntimestep;
+
+    ev_init(eflag, vflag);
+
+    // get lattice
+    lattice[0] = h[0];    // xx
+    lattice[4] = h[1];    // yy
+    lattice[8] = h[2];    // zz
+    lattice[7] = h[3];    // yz
+    lattice[6] = h[4];    // xz
+    lattice[3] = h[5];    // xy
+
+    generate_neighdata();
+
+    // get input
+    auto Ri = torch::zeros({nlocal, 3}, torch::dtype(torch::kFloat32).device(device));
+    auto dfeat = torch::zeros({nlocal, max_neighbor, 3}, torch::dtype(torch::kFloat32).device(device));
+    auto list_neigh = torch::zeros({nlocal, max_neighbor}, torch::dtype(torch::kInt32).device(device));
+    auto natoms_img = torch::zeros({nlocal}, torch::dtype(torch::kInt32).device(device));
+    auto map_type = torch::zeros({ntypes}, torch::dtype(torch::kInt32).device(device));
+    auto ImageDR = torch::zeros({nlocal, max_neighbor, 3}, torch::dtype(torch::kFloat32).device(device));
+
+
+    auto output = module.forward({Ri, dfeat, list_neigh, natoms_img, map_type, ImageDR}).toTuple();
+    torch::Tensor Etot = output->elements()[0].toTensor().to(torch::kCPU);
+    torch::Tensor Ei = output->elements()[1].toTensor().to(torch::kCPU);
+    torch::Tensor Force = output->elements()[2].toTensor().to(torch::kCPU);
+    torch::Tensor Virial = output->elements()[3].toTensor().to(torch::kCPU);
+
+}

@@ -471,6 +471,7 @@ subroutine ML_FF_EF(num_neigh,list_neigh,dR_neigh,&
       endif
       ! write(*,*) "Etot: ", Etot
       ! write(*,*) "fatom: ", fatom(:,1:natoms)
+      ! write(*,*) "virial: ", virial
    endif
 
    if ((iflag_model.eq.1).or.(iflag_model.eq.3)) then

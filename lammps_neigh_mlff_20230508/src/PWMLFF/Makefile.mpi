@@ -7,12 +7,12 @@ SHELL = /bin/sh
 # specify flags and libraries needed for your compiler
 
 CC =		mpicxx
-CCFLAGS =	-O3 -std=c++17 -I../PWMATMLFF
+CCFLAGS =	-g -O3 -std=c++17 -D_GLIBCXX_USE_CXX11_ABI=0
 SHFLAGS =	-fPIC
 DEPFLAGS =	-M
 
-LINK =		mpiifort
-LINKFLAGS =	-O3 -cxxlib -nofor_main -mkl
+LINK =		mpicxx
+LINKFLAGS =	-g -O3 -std=c++17
 LIB =
 SIZE =		size
 
@@ -23,7 +23,7 @@ SHLIBFLAGS =	-shared -rdynamic
 PYTORCH_PATH = $(shell python3 -c "import torch; print(torch.__path__[0])")
 CCFLAGS += -I$(PYTORCH_PATH)/include/
 CCFLAGS += -I$(PYTORCH_PATH)/include/torch/csrc/api/include/
-# CCFLAGS += -I$(PYTORCH_PATH)/include/torch/
+CCFLAGS += -I$(PYTORCH_PATH)/include/torch/
 
 LINKFLAGS += -L$(PYTORCH_PATH)/lib/ -ltorch -lc10 -ltorch_cpu
 # ---------------------------------------------------------------------
@@ -96,11 +96,8 @@ vpath %.h ..
 
 # Link target
 
-#$(EXE): main.o $(LMPLIB) $(EXTRA_LINK_DEPENDS)
-#	$(LINK) $(LINKFLAGS) main.o $(EXTRA_PATH) $(LMPLINK) $(EXTRA_LIB) $(LIB) -o $@
-#	$(SIZE) $@
 $(EXE): main.o $(LMPLIB) $(EXTRA_LINK_DEPENDS)
-	$(LINK) $(LINKFLAGS) main.o $(EXTRA_PATH) $(LMPLINK) $(EXTRA_LIB) $(LIB) ../PWMATMLFF/f2c_calc_energy_force.a  -o $@
+	$(LINK) $(LINKFLAGS) main.o $(EXTRA_PATH) $(LMPLINK) $(EXTRA_LIB) $(LIB) -o $@
 	$(SIZE) $@
 
 # Library targets

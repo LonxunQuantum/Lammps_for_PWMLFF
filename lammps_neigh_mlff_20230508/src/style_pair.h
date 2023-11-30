@@ -14,6 +14,7 @@
 #include "pair_lj_expand.h"
 #include "pair_morse.h"
 #include "pair_pwmatmlff.h"
+#include "pair_pwmlff.h"
 #include "pair_soft.h"
 #include "pair_table.h"
 #include "pair_yukawa.h"

@@ -1511,6 +1511,9 @@
 #define PACKAGE "PWMATMLFF"
 #include "PWMATMLFF/pair_pwmatmlff.h"
 #undef PACKAGE
+#define PACKAGE "PWMLFF"
+#include "PWMLFF/pair_pwmlff.h"
+#undef PACKAGE
 #define PACKAGE "PYTHON"
 #include "PYTHON/pair_python.h"
 #undef PACKAGE

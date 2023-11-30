@@ -217,6 +217,9 @@ contains
       real(8),allocatable,dimension(:,:,:,:,:) :: d_ss_fout
       real(8),allocatable,dimension(:,:) :: dE_dfout
       real(8),allocatable,dimension(:,:,:) :: f_back0_em,f_back_em
+      real(8),allocatable,dimension(:,:) :: ones_em
+      real(8),allocatable,dimension(:,:) :: ones_NN
+      real(8) :: time_end, time1, time2, time_all
 
       integer itype,i,j,ii,jj,kk
       integer iat2
@@ -352,17 +355,24 @@ contains
 
             num=jj     ! the same (itype2,itype1), all the neigh, and all the atom belong to this CPU
 
+            allocate(ones_em(1,num))
+            ones_em(:,:) = 1.d0
+
             do ll=1,nlayer_em
 
                ! take weights
                call dgemm('T', 'N', node_em(ll+1),num,node_em(ll), 1.d0,  &
                   Wij_em(1,1,ll,itype2,itype1),nodeMM_em,f_out(1,1,ll),nodeMM_em,0.d0,f_in(1,1,ll+1),nodeMM_em)
                ! add bias
-               do i=1,num
-                  do j=1,node_em(ll+1)
-                     f_in(j,i,ll+1)=f_in(j,i,ll+1)+B_em(j,ll,itype2,itype1)
-                  enddo
-               enddo
+               ! do i=1,num
+               !    do j=1,node_em(ll+1)
+               !       f_in(j,i,ll+1)=f_in(j,i,ll+1)+B_em(j,ll,itype2,itype1)
+               !    enddo
+               ! enddo
+               call dgemm('N', 'N', node_em(ll+1),num,1, 1.d0,  &
+                  B_em(1, ll, itype2, itype1), node_em(ll+1), ones_em, 1, 1.d0, f_in(1,1,ll+1), nodeMM_em)
+               ! write(*,*) 'f_in',f_in(:,:,ll+1)
+               ! write(*,*) '*******************'
 
                ! activation
                do i=1,num
@@ -404,6 +414,7 @@ contains
                   enddo
                endif
             enddo ! ll end
+            deallocate(ones_em)
 
             ! embeding input
             ! write(*,*) 'itype1', itype1
@@ -486,7 +497,8 @@ contains
          endif
 
          num=natom_n_type(itype1)
-
+         allocate(ones_NN(1,num))
+         ones_NN(:,:) = 1.d0
          ! f_in_NN(nodeMM_NN,natom_m_type,nlayer_NN+1)
          ! dim: (max node dim, max natoms in all types, nlayer + 1)
 
@@ -498,6 +510,7 @@ contains
          ! *******************************************
          !    propogation through the fitting net
          ! *******************************************
+         time_all = 0.d0
          do ll=1,nlayer_NN
             if(ll.gt.1) then
                do i=1,num
@@ -537,13 +550,15 @@ contains
 
             call dgemm('T', 'N', node_NN(ll+1),num,node_NN(ll), 1.d0,  &
                Wij_NN(1,1,ll,itype1),nodeMM_NN,f_out_NN(1,1,ll),nodeMM_NN,0.d0,f_in_NN(1,1,ll+1),nodeMM_NN)
-
-            do i=1,num
-               do j=1,node_NN(ll+1)
-                  f_in_NN(j,i,ll+1)=f_in_NN(j,i,ll+1)+B_NN(j,ll,itype1)
-               enddo
-            enddo
+            ! do i=1,num
+            !    do j=1,node_NN(ll+1)
+            !       f_in_NN(j,i,ll+1)=f_in_NN(j,i,ll+1)+B_NN(j,ll,itype1)
+            !    enddo
+            ! enddo
+            call dgemm('N', 'N', node_NN(ll+1),num,1, 1.d0,  &
+               B_NN(1, ll, itype1), node_NN(ll+1), ones_NN, 1, 1.d0, f_in_NN(1,1,ll+1), nodeMM_NN)
          enddo ! ll end
+         deallocate(ones_NN)
 
          if(node_NN(nlayer_NN+1).ne.1) then
             write(6,*) "node_NN(nlayer_NN+1).ne.1,stop",node_NN(nlayer_NN+1)

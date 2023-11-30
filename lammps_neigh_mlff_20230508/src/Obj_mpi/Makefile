@@ -6,15 +6,13 @@ SHELL = /bin/sh
 # compiler/linker settings
 # specify flags and libraries needed for your compiler
 
-CC =		mpiicpc
-CCFLAGS =	-O3 -std=c++11 -I../PWMATMLFF
+CC =		mpicxx
+CCFLAGS =	-O3 -std=c++17 -I../PWMATMLFF
 SHFLAGS =	-fPIC
 DEPFLAGS =	-M
 
-#LINK =		mpicxx
-#LINKFLAGS =	-g -O3 -std=c++11
 LINK =		mpiifort
-#LINKFLAGS =	-g -O3 -std=c++11 -cxxlib -nofor_main
+# LINK =		mpicxx
 LINKFLAGS =	-O3 -cxxlib -nofor_main -mkl
 LIB =
 SIZE =		size
@@ -23,6 +21,12 @@ ARCHIVE =	ar
 ARFLAGS =	-rc
 SHLIBFLAGS =	-shared -rdynamic
 
+PYTORCH_PATH = $(shell python3 -c "import torch; print(torch.__path__[0])")
+CCFLAGS += -I$(PYTORCH_PATH)/include/
+CCFLAGS += -I$(PYTORCH_PATH)/include/torch/csrc/api/include/
+# CCFLAGS += -I$(PYTORCH_PATH)/include/torch/
+
+LINKFLAGS += -L$(PYTORCH_PATH)/lib/ -ltorch -lc10 -ltorch_cpu
 # ---------------------------------------------------------------------
 # LAMMPS-specific settings, all OPTIONAL
 # specify settings for LAMMPS features you will use
