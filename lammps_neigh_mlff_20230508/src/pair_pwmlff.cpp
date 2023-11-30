@@ -288,7 +288,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
     auto int_tensor_options = torch::TensorOptions().dtype(torch::kInt);
     auto float_tensor_options = torch::TensorOptions().dtype(torch::kFloat64);
     torch::Tensor imagetype_map_tensor = torch::from_blob(imagetype_map.data(), {inum}, int_tensor_options).to(device);
-    torch::Tensor imagetype_tensor = torch::from_blob(imagetype.data(), {1, inum}, int_tensor_options).to(device);
+    torch::Tensor imagetype_tensor = torch::from_blob(imagetype.data(), {inum}, int_tensor_options).to(device);
     torch::Tensor neighbor_list_tensor = torch::from_blob(neighborlist.data(), {1, inum, max_neighbor * ntypes}, int_tensor_options).to(device);
     torch::Tensor dR_neigh_tensor = torch::from_blob(dR_neigh.data(), {1, inum, max_neighbor * ntypes, 4}, float_tensor_options).to(device,dtype);
     // auto t6 = std::chrono::high_resolution_clock::now();

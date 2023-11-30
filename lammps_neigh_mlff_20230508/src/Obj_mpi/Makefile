@@ -12,7 +12,6 @@ SHFLAGS =	-fPIC
 DEPFLAGS =	-M
 
 LINK =		mpiifort
-# LINK =		mpicxx
 LINKFLAGS =	-O3 -cxxlib -nofor_main -mkl
 LIB =
 SIZE =		size
