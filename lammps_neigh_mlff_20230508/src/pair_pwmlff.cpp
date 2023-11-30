@@ -110,7 +110,7 @@ void PairPWMLFF::settings(int narg, char** arg)
 
 void PairPWMLFF::coeff(int narg, char** arg)
 {
-    int ntype = atom->ntypes;
+    int ntypes = atom->ntypes;
     if (!allocated) { allocate(); }
 
     // pair_coeff * * 
@@ -128,9 +128,9 @@ void PairPWMLFF::coeff(int narg, char** arg)
     }
 
     auto type_map_module = module.attr("atom_type").toList();
-    if (ntype > narg - 2 )
+    if (ntypes > type_map_module.size() || ntypes != narg - 2)
     {
-        error->all(FLERR, "Element mapping not fully set");
+        error->all(FLERR, "Element mapping is not correct, ntypes = " + std::to_string(ntypes));
     }
     for (int ii = 2; ii < narg; ++ii) {
         int temp = std::stoi(arg[ii]);
@@ -254,8 +254,8 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<dou
 
     if (min_dR_all < 0.81) {
         if (me == 0) {
-            std::cout << "WARNING: there are two atoms too close, min_dR_all = " << min_dR_all << std::endl;
-            error->universe_all(FLERR, "WARNING: there are two atoms too close");
+            std::cout << "ERROR: there are two atoms too close, min_dR_all = " << min_dR_all << std::endl;
+            error->universe_all(FLERR, "there are two atoms too close");
         }
     }
     return std::make_tuple(std::move(imagetype), std::move(imagetype_map), std::move(neighbor_list), std::move(dR_neigh));
@@ -291,6 +291,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
     torch::Tensor imagetype_tensor = torch::from_blob(imagetype.data(), {inum}, int_tensor_options).to(device);
     torch::Tensor neighbor_list_tensor = torch::from_blob(neighborlist.data(), {1, inum, max_neighbor * ntypes}, int_tensor_options).to(device);
     torch::Tensor dR_neigh_tensor = torch::from_blob(dR_neigh.data(), {1, inum, max_neighbor * ntypes, 4}, float_tensor_options).to(device,dtype);
+    torch::Tensor type_map_tensor = torch::from_blob(type_map.data(), {ntypes}, int_tensor_options).to(device);
     // auto t6 = std::chrono::high_resolution_clock::now();
     /*
       do forward for 4 models
@@ -298,7 +299,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
       2, 3, 4 for the test
     */
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-        auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, imagetype_tensor, dR_neigh_tensor, nghost}).toTuple();
+        auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, imagetype_tensor, dR_neigh_tensor, nghost, type_map_tensor}).toTuple();
         if (ff_idx == 0) {
             torch::Tensor Etot = output->elements()[0].toTensor().to(torch::kCPU);
             torch::Tensor Ei = output->elements()[1].toTensor().to(torch::kCPU);

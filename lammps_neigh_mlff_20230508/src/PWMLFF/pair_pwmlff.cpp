@@ -110,7 +110,7 @@ void PairPWMLFF::settings(int narg, char** arg)
 
 void PairPWMLFF::coeff(int narg, char** arg)
 {
-    int ntype = atom->ntypes;
+    int ntypes = atom->ntypes;
     if (!allocated) { allocate(); }
 
     // pair_coeff * * 
@@ -128,9 +128,9 @@ void PairPWMLFF::coeff(int narg, char** arg)
     }
 
     auto type_map_module = module.attr("atom_type").toList();
-    if (ntype > narg - 2 )
+    if (ntypes > type_map_module.size() || ntypes != narg - 2)
     {
-        error->all(FLERR, "Element mapping not fully set");
+        error->all(FLERR, "Element mapping is not correct, ntypes = " + std::to_string(ntypes));
     }
     for (int ii = 2; ii < narg; ++ii) {
         int temp = std::stoi(arg[ii]);
@@ -168,7 +168,7 @@ void PairPWMLFF::init_style()
 }
 /* ---------------------------------------------------------------------- */
 
-std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::generate_neighdata()
+std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::generate_neighdata()
 {   
     int i, j, k, ii, jj, inum, jnum, itype, jtype;
     double xtmp, ytmp, ztmp, delx, dely, delz, rsq, rij;
@@ -193,12 +193,7 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<dou
     firstneigh = list->firstneigh;
 
     std::vector<std::vector<int>> num_neigh(inum, std::vector<int>(ntypes));
-    // std::vector<int> imagetype(inum);
-    // std::vector<int> imagetype_map(inum);
-    // std::vector<int> neighbor_list(inum * ntypes * max_neighbor);
-    // std::vector<double> dR_neigh(inum * ntypes * max_neighbor * 4);
-    // std::vector<int> use_type(n_all);
-    imagetype.resize(inum);
+    // imagetype.resize(inum);
     imagetype_map.resize(inum);
     neighbor_list.resize(inum * ntypes * max_neighbor);
     dR_neigh.resize(inum * ntypes * max_neighbor * 4);
@@ -224,7 +219,7 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<dou
         jlist = firstneigh[i];
         jnum = numneigh[i];
         imagetype_map[ii] = itype - 1;          // 1, 1, 0, 1, 1        python index from 0
-        imagetype[ii] = use_type[i];            // 1, 1, 6, 1, 1
+        // imagetype[ii] = use_type[i];            // 1, 1, 6, 1, 1
 
         for (jj = 0; jj < jnum; jj++)
         {
@@ -254,11 +249,11 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<dou
 
     if (min_dR_all < 0.81) {
         if (me == 0) {
-            std::cout << "WARNING: there are two atoms too close, min_dR_all = " << min_dR_all << std::endl;
-            error->universe_all(FLERR, "WARNING: there are two atoms too close");
+            std::cout << "ERROR: there are two atoms too close, min_dR_all = " << min_dR_all << std::endl;
+            error->universe_all(FLERR, "there are two atoms too close");
         }
     }
-    return std::make_tuple(std::move(imagetype), std::move(imagetype_map), std::move(neighbor_list), std::move(dR_neigh));
+    return std::make_tuple(std::move(imagetype_map), std::move(neighbor_list), std::move(dR_neigh));
     // return std::make_tuple(imagetype, imagetype_map, neighbor_list, dR_neigh);
 }
 
@@ -283,14 +278,14 @@ void PairPWMLFF::compute(int eflag, int vflag)
     inum = list->inum;
 
     // auto t4 = std::chrono::high_resolution_clock::now();
-    auto [imagetype, imagetype_map, neighborlist, dR_neigh] = generate_neighdata();
+    auto [imagetype_map, neighborlist, dR_neigh] = generate_neighdata();
     // auto t5 = std::chrono::high_resolution_clock::now();
     auto int_tensor_options = torch::TensorOptions().dtype(torch::kInt);
     auto float_tensor_options = torch::TensorOptions().dtype(torch::kFloat64);
     torch::Tensor imagetype_map_tensor = torch::from_blob(imagetype_map.data(), {inum}, int_tensor_options).to(device);
-    torch::Tensor imagetype_tensor = torch::from_blob(imagetype.data(), {inum}, int_tensor_options).to(device);
     torch::Tensor neighbor_list_tensor = torch::from_blob(neighborlist.data(), {1, inum, max_neighbor * ntypes}, int_tensor_options).to(device);
     torch::Tensor dR_neigh_tensor = torch::from_blob(dR_neigh.data(), {1, inum, max_neighbor * ntypes, 4}, float_tensor_options).to(device,dtype);
+    torch::Tensor type_map_tensor = torch::from_blob(type_map.data(), {ntypes}, int_tensor_options).to(device);
     // auto t6 = std::chrono::high_resolution_clock::now();
     /*
       do forward for 4 models
@@ -298,7 +293,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
       2, 3, 4 for the test
     */
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-        auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, imagetype_tensor, dR_neigh_tensor, nghost}).toTuple();
+        auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, type_map_tensor, dR_neigh_tensor, nghost}).toTuple();
         if (ff_idx == 0) {
             torch::Tensor Etot = output->elements()[0].toTensor().to(torch::kCPU);
             torch::Tensor Ei = output->elements()[1].toTensor().to(torch::kCPU);

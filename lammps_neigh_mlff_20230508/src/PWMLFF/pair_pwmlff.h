@@ -26,7 +26,7 @@ namespace LAMMPS_NS {
             PairPWMLFF(class LAMMPS *);
             ~PairPWMLFF() override;
 
-            std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<double>> generate_neighdata();
+            std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> generate_neighdata();
             void compute(int, int) override;
             void settings(int, char **) override;
             void coeff(int, char **) override;
@@ -50,7 +50,8 @@ namespace LAMMPS_NS {
             int max_neighbor;
             std::string model_name;
 
-            std::vector<int> imagetype, imagetype_map, neighbor_list;
+            // std::vector<int> imagetype, imagetype_map, neighbor_list;
+            std::vector<int> imagetype_map, neighbor_list;
             std::vector<double> dR_neigh;
             std::vector<int> use_type;
 
