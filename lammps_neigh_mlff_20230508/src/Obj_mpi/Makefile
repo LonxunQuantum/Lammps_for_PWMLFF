@@ -13,6 +13,8 @@ DEPFLAGS =	-M
 
 LINK =		mpiifort
 LINKFLAGS =	-O3 -cxxlib -nofor_main -mkl
+# LINK =		mpicxx
+# LINKFLAGS =	-g -O3 -std=c++17
 LIB =
 SIZE =		size
 

@@ -77,7 +77,7 @@ void PairPWMLFF::settings(int narg, char** arg)
     
     device = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
     dtype = torch::kFloat64;
-    utils::logmesg(this -> lmp, "<---- Loading model ---->");
+    if (me == 0) utils::logmesg(this -> lmp, "<---- Loading model ---->");
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         std::string model_file = models[ff_idx];
         try
@@ -86,7 +86,7 @@ void PairPWMLFF::settings(int narg, char** arg)
             module.to(dtype);
             // module.eval();
             modules.push_back(module);
-            printf("\nLoading model file:   %s\n", model_file.c_str());
+            if (me == 0) printf("\nLoading model file:   %s\n", model_file.c_str());
         }
         catch (const c10::Error e)
         {
@@ -96,12 +96,14 @@ void PairPWMLFF::settings(int narg, char** arg)
     cutoff = module.attr("Rmax").toDouble();
     max_neighbor = module.attr("maxNeighborNum").toInt();
     // print information
+    if (me == 0) {
     utils::logmesg(this -> lmp, "<---- Load model successful!!! ---->");
     printf("\nDevice:       %s", device == torch::kCPU ? "CPU" : "GPU");
     printf("\nModel type:   %5d",5);
     printf("\nModel nums:   %5d",num_ff);
     printf("\ncutoff :      %12.6f",cutoff);
     printf("\nmax_neighbor: %5d\n", max_neighbor);
+    }
 }
 
 /* ----------------------------------------------------------------------
