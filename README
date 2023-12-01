@@ -1,0 +1,13 @@
+1. cd src/
+
+2. make yes-PWMLFF
+
+3. conda activate pytorch2
+
+4. make mpi -j 4
+
+5. export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(python3 -c "import torch; print(torch.__path__[0])")/lib/
+
+6. (optional) echo "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(python3 -c "import torch; print(torch.__path__[0])")/lib/" >> ~/.bashrc
+
+7. run lammps
