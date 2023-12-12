@@ -346,10 +346,8 @@ void PairPWMLFF::compute(int eflag, int vflag)
       write as fractional coordinate
       Note: only write data at the very end (in the destructor)!
   */
-    // auto t8 = std::chrono::high_resolution_clock::now();
     // std::cout << "t4 " << (t5 - t4).count() * 0.000001 << "\tms" << std::endl;
     // std::cout << "t5 " << (t6 - t5).count() * 0.000001 << "\tms" << std::endl;
     // std::cout << "t6 " << (t7 - t6).count() * 0.000001 << "\tms" << std::endl;
-    // std::cout << "t7 " << (t8 - t7).count() * 0.000001 << "\tms" << std::endl;
 
 }

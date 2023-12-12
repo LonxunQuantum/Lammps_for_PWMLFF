@@ -25,6 +25,17 @@ CCFLAGS += -I$(PYTORCH_PATH)/include/
 CCFLAGS += -I$(PYTORCH_PATH)/include/torch/csrc/api/include/
 
 LINKFLAGS += -L$(PYTORCH_PATH)/lib/ -ltorch -lc10 -ltorch_cpu
+# LINKFLAGS += -L/data/home/hfhuang/software/PWmatMLFF/src/op/build/lib -lCalcOps_bind
+COSTUM_OP_CPU ?= 1
+COSTUM_OP_GPU ?= 0
+ifeq ($(COSTUM_OP_CPU), 1)
+	LINKFLAGS += -L$(OP_LIB_PATH) -lCalcOps_bind_cpu
+endif
+ifeq ($(COSTUM_OP_GPU), 1)
+	LINKFLAGS += -L$(OP_LIB_PATH) -lCalcOps_bind
+endif
+PYTHON_LIB_PATH = $(shell python3-config --prefix)/lib
+LINKFLAGS += -L$(PYTHON_LIB_PATH) -lpython3.11 -static-libstdc++ -static-libgcc
 # ---------------------------------------------------------------------
 # LAMMPS-specific settings, all OPTIONAL
 # specify settings for LAMMPS features you will use
