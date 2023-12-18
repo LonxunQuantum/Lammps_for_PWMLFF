@@ -25,17 +25,16 @@ CCFLAGS += -I$(PYTORCH_PATH)/include/
 CCFLAGS += -I$(PYTORCH_PATH)/include/torch/csrc/api/include/
 
 LINKFLAGS += -L$(PYTORCH_PATH)/lib/ -ltorch -lc10 -ltorch_cpu
-# LINKFLAGS += -L/data/home/hfhuang/software/PWmatMLFF/src/op/build/lib -lCalcOps_bind
-COSTUM_OP_CPU ?= 1
-COSTUM_OP_GPU ?= 0
-ifeq ($(COSTUM_OP_CPU), 1)
-	LINKFLAGS += -L$(OP_LIB_PATH) -lCalcOps_bind_cpu
-endif
-ifeq ($(COSTUM_OP_GPU), 1)
-	LINKFLAGS += -L$(OP_LIB_PATH) -lCalcOps_bind
-endif
 PYTHON_LIB_PATH = $(shell python3-config --prefix)/lib
 LINKFLAGS += -L$(PYTHON_LIB_PATH) -lpython3.11 -static-libstdc++ -static-libgcc
+# LINKFLAGS += -L/data/home/hfhuang/software/PWmatMLFF/src/op/build/lib -lCalcOps_bind
+ifeq ($(OP_LIB_PATH),)
+$(error OP_LIB_PATH is not set)
+endif
+CPU_LIB = $(OP_LIB_PATH)/libCalcOps_bind_cpu.so
+GPU_LIB = $(OP_LIB_PATH)/libCalcOps_bind.so
+CPUFLAGS = $(LINKFLAGS) -L$(OP_LIB_PATH) -lCalcOps_bind_cpu
+GPUFLAGS = $(LINKFLAGS) -L$(OP_LIB_PATH) -lCalcOps_bind
 # ---------------------------------------------------------------------
 # LAMMPS-specific settings, all OPTIONAL
 # specify settings for LAMMPS features you will use
@@ -107,7 +106,11 @@ vpath %.h ..
 # Link target
 
 $(EXE): main.o $(LMPLIB) $(EXTRA_LINK_DEPENDS)
-	$(LINK) $(LINKFLAGS) main.o $(EXTRA_PATH) $(LMPLINK) $(EXTRA_LIB) $(LIB) -o $@
+	$(LINK) $(CPUFLAGS) main.o $(EXTRA_PATH) $(LMPLINK) $(EXTRA_LIB) $(LIB) -o $@
+	$(SIZE) $@
+
+$(EXE_GPU): main.o $(LMPLIB) $(EXTRA_LINK_DEPENDS)
+	$(LINK) $(GPUFLAGS) main.o $(EXTRA_PATH) $(LMPLINK) $(EXTRA_LIB) $(LIB) -o $@
 	$(SIZE) $@
 
 # Library targets

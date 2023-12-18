@@ -35,3 +35,4 @@
 # EXAMPLES/*
 src/Obj_mpi/.depend
 src/lmp_mpi
+src/lmp_mpi_gpu

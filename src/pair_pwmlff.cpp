@@ -219,7 +219,7 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::
         i = ilist[ii];                          // 0, 1, 2, 3, 4
         itype = type[i];                        // 2, 2, 1, 2, 2
         jlist = firstneigh[i];
-        jnum = numneigh[i];
+        jnum = numneigh[i];                     // 4, 4, 4, 4, 4
         imagetype_map[ii] = itype - 1;          // 1, 1, 0, 1, 1        python index from 0
         // imagetype[ii] = use_type[i];            // 1, 1, 6, 1, 1
 
@@ -230,7 +230,7 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::
             dely = x[j][1] - x[i][1];
             delz = x[j][2] - x[i][2];
             rsq = delx * delx + dely * dely + delz * delz;
-            jtype = type[j];                    // 
+            jtype = type[j];                    // 2, 1, 2, 2;   2, 1, 2, 2;   2, 2, 2, 2;   2, 2, 1, 2;   2, 2, 1, 2
             if (rsq <= rc2) 
             {
                 etnum = num_neigh[i][jtype - 1];
@@ -242,6 +242,7 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::
                 dR_neigh[index * 4 + 3] = delz;
                 neighbor_list[index] = j + 1;
                 num_neigh[i][jtype - 1] += 1;
+                // std::cout << "num_neigh[" << i << "][" << jtype - 1 << "] = " << num_neigh[i][jtype - 1] << std::endl;
                 if (rsq < min_dR) min_dR = rsq;
             }
         }

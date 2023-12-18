@@ -10,6 +10,7 @@ DYN_LIB = -ldl
 
 ROOT =   lmp
 EXE =    lmp_$@
+EXE_GPU =    lmp_$@_gpu
 ARLIB =  liblammps_$@.a
 SHLIB =  liblammps_$@.so
 ARLINK = liblammps.a
@@ -406,11 +407,17 @@ gitversion:
 	@cd $(objdir); rm -f .depend; \
 	$(MAKE) $(MFLAGS) "SRC = $(SRC)" "INC = $(INC)" depend || :
 	@rm -f $(ARLINK) $(SHLINK) $(EXE)
+	@rm -f $(ARLINK) $(SHLINK) $(EXE_GPU)
 ifeq ($(mode),static)
 	@cd $(objdir); \
 	$(MAKE) $(MFLAGS) "OBJ = $(OBJLIB)" "INC = $(INC)" "SHFLAGS =" \
 	  "LMPLIB = $(ARLIB)" "ARLIB = $(ARLIB)" "SHLIB = $(SHLIB)" \
 	  "LMPLINK = $(LMPLINK)" "DYN_LIB = $(DYN_LIB)" "EXE = ../$(EXE)" ../$(EXE)
+
+	@cd $(objdir); \
+	$(MAKE) $(MFLAGS) "OBJ = $(OBJLIB)" "INC = $(INC)" "SHFLAGS =" \
+	"LMPLIB = $(ARLIB)" "ARLIB = $(ARLIB)" "SHLIB = $(SHLIB)" \
+	"LMPLINK = $(LMPLINK)" "DYN_LIB = $(DYN_LIB)" "EXE_GPU = ../$(EXE_GPU)" ../$(EXE_GPU)
 	@ln -s $(ARLIB) $(ARLINK)
 endif
 ifeq ($(mode),shared)
@@ -418,6 +425,11 @@ ifeq ($(mode),shared)
 	$(MAKE) $(MFLAGS) "OBJ = $(OBJLIB)" "INC = $(INC)" \
 	  "LMPLIB = $(SHLIB)" "ARLIB = $(ARLIB)" "SHLIB = $(SHLIB)" \
 	  "LMPLINK = $(LMPLINK)" "DYN_LIB = $(DYN_LIB)" "EXE = ../$(EXE)" ../$(EXE)
+
+	@cd $(objdir); \
+	$(MAKE) $(MFLAGS) "OBJ = $(OBJLIB)" "INC = $(INC)" \
+	  "LMPLIB = $(SHLIB)" "ARLIB = $(ARLIB)" "SHLIB = $(SHLIB)" \
+	  "LMPLINK = $(LMPLINK)" "DYN_LIB = $(DYN_LIB)" "EXE_GPU = ../$(EXE_GPU)" ../$(EXE_GPU)
 	@ln -s $(SHLIB) $(SHLINK)
 endif
 # backward compatibility
@@ -438,6 +450,10 @@ ifeq ($(mode),print)
 	@cd $(objdir); \
 	$(MAKE) $(MFLAGS) "OBJ = $(OBJLIB)" "INC = $(INC)" \
 	  "EXE = ../$(ARLIB)" -f ../Makefile.print
+
+	@cd $(objdir); \
+	$(MAKE) $(MFLAGS) "OBJ = $(OBJLIB)" "INC = $(INC)" \
+	  "EXE_GPU = ../$(ARLIB)" -f ../Makefile.print
 endif
 
 # Remove machine-specific object files
