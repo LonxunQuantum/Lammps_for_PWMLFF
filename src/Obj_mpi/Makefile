@@ -31,8 +31,6 @@ LINKFLAGS += -L$(PYTHON_LIB_PATH) -lpython3.11 -static-libstdc++ -static-libgcc
 ifeq ($(OP_LIB_PATH),)
 $(error OP_LIB_PATH is not set)
 endif
-CPU_LIB = $(OP_LIB_PATH)/libCalcOps_bind_cpu.so
-GPU_LIB = $(OP_LIB_PATH)/libCalcOps_bind.so
 CPUFLAGS = $(LINKFLAGS) -L$(OP_LIB_PATH) -lCalcOps_bind_cpu
 GPUFLAGS = $(LINKFLAGS) -L$(OP_LIB_PATH) -lCalcOps_bind
 # ---------------------------------------------------------------------

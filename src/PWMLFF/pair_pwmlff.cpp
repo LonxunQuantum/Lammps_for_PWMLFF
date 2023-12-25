@@ -253,8 +253,8 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::
     if (min_dR_all < 0.81) {
         if (me == 0) {
             std::cout << "ERROR: there are two atoms too close, min_dR_all = " << min_dR_all << std::endl;
-            error->universe_all(FLERR, "there are two atoms too close");
         }
+        error->universe_all(FLERR, "there are two atoms too close");
     }
     return std::make_tuple(std::move(imagetype_map), std::move(neighbor_list), std::move(dR_neigh));
     // return std::make_tuple(imagetype, imagetype_map, neighbor_list, dR_neigh);
@@ -282,6 +282,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
 
     // auto t4 = std::chrono::high_resolution_clock::now();
     auto [imagetype_map, neighborlist, dR_neigh] = generate_neighdata();
+    if (inum == 0) return;
     // auto t5 = std::chrono::high_resolution_clock::now();
     auto int_tensor_options = torch::TensorOptions().dtype(torch::kInt);
     auto float_tensor_options = torch::TensorOptions().dtype(torch::kFloat64);
