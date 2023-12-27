@@ -6,7 +6,7 @@
 3. conda activate pytorch2
 
 # add this to your environment variables before compile lammps
-4. export OP_LIB_PATH=$(dirname $(dirname $(which PWMLFF)))/op/build/lib   # you must modify this!!!
+4. export OP_LIB_PATH=$(dirname $(dirname $(which PWMLFF)))/op/build/lib
 
 5. make mpi -j4  
 
