@@ -2,15 +2,18 @@
 
 2. make yes-PWMLFF
 
+# activate your virtual environment: need to install pytorch2.0
 3. conda activate pytorch2
 
-4. export OP_LIB_PATH=/path/to/PWMLFF/src/op/build/lib   # you must modify this!!!
+# add this to your environment variables before compile lammps
+4. export OP_LIB_PATH=$(dirname $(dirname $(which PWMLFF)))/op/build/lib   # you must modify this!!!
 
 5. make mpi -j4  
 
-6. export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(python3 -c "import torch; print(torch.__path__[0])")/lib/    # add this to your environment variables before running lammps
+# add this to your environment variables before running lammps
+6. export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(python3 -c "import torch; print(torch.__path__[0])")/lib:$(dirname $(dirname $(which python3)))/lib:$(dirname $(dirname $(which PWMLFF)))/op/build/lib
 
-7. (optional) echo "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(python3 -c "import torch; print(torch.__path__[0])")/lib/" >> ~/.bashrc
+7. (optional) echo "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$(python3 -c "import torch; print(torch.__path__[0])")/lib:$(dirname $(dirname $(which python3)))/lib:$(dirname $(dirname $(which PWMLFF)))/op/build/lib" >> ~/.bashrc
 
 8. run lammps  (For GPU version, use lmp_mpi_gpu)
 
