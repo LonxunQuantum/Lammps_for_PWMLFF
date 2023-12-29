@@ -63,6 +63,8 @@ void PairPWMLFF::settings(int narg, char** arg)
 {
     int ff_idx;
     int iarg;
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     if (narg <= 0) error->all(FLERR, "Illegal pair_style command");
     std::vector<std::string> models;
@@ -75,14 +77,17 @@ void PairPWMLFF::settings(int narg, char** arg)
         models.push_back(arg[ii]);                          // model files
     }
     
-    device = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+    // device = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+    torch::DeviceType device_type = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
+    device = device_type == torch::kCUDA ?  torch::Device(device_type, rank) : torch::Device(device_type);
     dtype = torch::kFloat64;
     if (me == 0) utils::logmesg(this -> lmp, "<---- Loading model ---->");
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         std::string model_file = models[ff_idx];
         try
         {
-            module = torch::jit::load(model_file, c10::Device(device));
+            // module = torch::jit::load(model_file, c10::Device(device));
+            module = torch::jit::load(model_file, device);
             module.to(dtype);
             // module.eval();
             modules.push_back(module);
