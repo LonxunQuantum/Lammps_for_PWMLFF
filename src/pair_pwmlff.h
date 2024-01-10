@@ -32,6 +32,9 @@ namespace LAMMPS_NS {
             void coeff(int, char **) override;
             double init_one(int, int) override;
             void init_style() override;
+            double calc_max_f_error(std::vector<torch::Tensor>);
+            int pack_reverse_comm(int, int, double* ) override;
+            void unpack_reverse_comm(int, int*, double* ) override;
 
         protected:
             virtual void allocate();
@@ -39,10 +42,15 @@ namespace LAMMPS_NS {
         private:
             int me;
             int num_ff;
+            int p_ff_idx;
             unsigned seed;
 
             torch::jit::script::Module module;
             std::vector<torch::jit::script::Module> modules;
+            std::vector<torch::Tensor> all_forces;
+            std::vector<double> max_err_list;
+            std::string explrError_fname;
+            std::FILE *explrError_fp;
             torch::Device device = torch::kCPU;
             torch::Dtype dtype = torch::kFloat32;
             std::vector<int> type_map;

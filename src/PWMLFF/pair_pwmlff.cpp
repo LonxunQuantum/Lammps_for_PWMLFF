@@ -28,6 +28,11 @@ PairPWMLFF::PairPWMLFF(LAMMPS *lmp) : Pair(lmp)
 {
     me = comm->me;
 	writedata = 1;
+
+    if (me == 0) {
+        explrError_fname = "explr.error";
+        explrError_fp = fopen(&explrError_fname[0], "w");
+    }
 }
 
 PairPWMLFF::~PairPWMLFF()
@@ -36,6 +41,10 @@ PairPWMLFF::~PairPWMLFF()
     {
         memory->destroy(setflag);
         memory->destroy(cutsq);
+    }
+
+    if (me == 0) {
+        fclose(explrError_fp);
     }
 
 }
@@ -170,10 +179,101 @@ double PairPWMLFF::init_one(int i, int j)
 
 void PairPWMLFF::init_style()
 {
+    if (force->newton_pair == 0) error->all(FLERR, "Pair style PWMATMLFF requires newon pair on");
     // Using a nearest neighbor table of type full
     neighbor->add_request(this, NeighConst::REQ_FULL);
 }
 /* ---------------------------------------------------------------------- */
+
+double PairPWMLFF::calc_max_f_error(std::vector<torch::Tensor> all_forces)
+{
+    int i, j;
+    int ff_idx, p_ff_idx;
+    double max_err, err;
+    double num_ff_inv;
+    int nlocal = atom->nlocal;
+
+    max_err = -1.0;
+    num_ff_inv = 1.0 / num_ff;
+
+    for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
+        // p_ff_idx is for reverse comm
+        p_ff_idx = ff_idx;
+        comm->reverse_comm(this);
+    }
+
+    std::vector<double> f_ave;
+    std::vector<double> f_err[num_ff];
+
+    f_ave.resize(nlocal * 3);
+
+    for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
+        f_err[ff_idx].resize(nlocal * 3);
+    }
+
+    // sum over all models
+    for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
+        auto F_ptr = all_forces[ff_idx].accessor<double, 3>();
+        for (i = 0; i < nlocal; i++) {
+            f_ave[i * 3 + 0] += F_ptr[0][i][0];
+            f_ave[i * 3 + 1] += F_ptr[0][i][1];
+            f_ave[i * 3 + 2] += F_ptr[0][i][2];
+        }
+    }
+
+    // calc ensemble average
+    for (i = 0; i < 3 * nlocal; i++) {
+        f_ave[i] *= num_ff_inv;
+    }
+
+    // calc error
+    for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
+        auto F_ptr = all_forces[ff_idx].accessor<double, 3>();
+        for (i = 0; i < nlocal; i++) {
+            f_err[ff_idx][i * 3 + 0] = F_ptr[0][i][0] - f_ave[i * 3 + 0];
+            f_err[ff_idx][i * 3 + 1] = F_ptr[0][i][1] - f_ave[i * 3 + 1];
+            f_err[ff_idx][i * 3 + 2] = F_ptr[0][i][2] - f_ave[i * 3 + 2];
+        }
+    }
+
+    // find max error 
+    for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
+        for (j = 0; j < nlocal * 3; j += 3) {
+            err = f_err[ff_idx][j] * f_err[ff_idx][j] + f_err[ff_idx][j + 1] * f_err[ff_idx][j + 1] + f_err[ff_idx][j + 2] * f_err[ff_idx][j + 2];
+            err = sqrt(err);
+            if (err > max_err) max_err = err;
+        }
+    }
+
+    return max_err;
+}
+
+int PairPWMLFF::pack_reverse_comm(int n, int first, double* buf) {
+    int i, m, last;
+
+    m = 0;
+    last = first + n;
+    for (i = first; i < last; i++) {
+        auto F_ptr = all_forces[p_ff_idx].accessor<double, 3>();
+        buf[m++] = F_ptr[0][i][0];
+        buf[m++] = F_ptr[0][i][1];
+        buf[m++] = F_ptr[0][i][2];
+    }
+    return m;
+}
+
+void PairPWMLFF::unpack_reverse_comm(int n, int* list, double* buf) {
+    int i, j, m;
+
+    m = 0;
+    for (i = 0; i < n; i++) {
+        j = list[i];
+        auto F_ptr = all_forces[p_ff_idx].accessor<double, 3>();
+        F_ptr[0][j][0] += buf[m++];
+        F_ptr[0][j][1] += buf[m++];
+        F_ptr[0][j][2] += buf[m++];
+    }
+}
 
 std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::generate_neighdata()
 {   
@@ -282,7 +382,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
     bool calc_egroup_from_mlff = false;
 
     int inum, jnum, itype, jtype;
-        
+    double max_err, global_max_err;    
     inum = list->inum;
 
     // auto t4 = std::chrono::high_resolution_clock::now();
@@ -301,12 +401,15 @@ void PairPWMLFF::compute(int eflag, int vflag)
       1 is used for MD
       2, 3, 4 for the test
     */
+    all_forces.clear();     // clear the force vector
+
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, type_map_tensor, dR_neigh_tensor, nghost}).toTuple();
+            torch::Tensor Force = output->elements()[2].toTensor().to(torch::kCPU);
+            all_forces.push_back(Force);
         if (ff_idx == 0) {
             torch::Tensor Etot = output->elements()[0].toTensor().to(torch::kCPU);
             torch::Tensor Ei = output->elements()[1].toTensor().to(torch::kCPU);
-            torch::Tensor Force = output->elements()[2].toTensor().to(torch::kCPU);
             torch::Tensor Virial = output->elements()[4].toTensor().to(torch::kCPU);
             // if (output->elements()[4].isTensor()) {
             //     calc_virial_from_mlff = true;
@@ -344,15 +447,26 @@ void PairPWMLFF::compute(int eflag, int vflag)
             // If virial needed calculate via F dot r.
             // if (vflag_fdotr) virial_fdotr_compute();
         }
-        
+
     }
     // auto t7 = std::chrono::high_resolution_clock::now();
     /*
       exploration mode.
-      select candidates
-      write as fractional coordinate
-      Note: only write data at the very end (in the destructor)!
+      calculate the error of the force
   */
+    if (num_ff > 1) {
+        // calculate model deviation with Force
+        max_err = calc_max_f_error(all_forces);
+
+        MPI_Allreduce(&max_err, &global_max_err, 1, MPI_DOUBLE, MPI_MAX, world);    
+
+        max_err_list.push_back(global_max_err);
+
+        if (me == 0) {
+            fprintf(explrError_fp, "%9d %16.9f\n", max_err_list.size(), global_max_err);
+            fflush(explrError_fp);
+        } 
+    } 
     // std::cout << "t4 " << (t5 - t4).count() * 0.000001 << "\tms" << std::endl;
     // std::cout << "t5 " << (t6 - t5).count() * 0.000001 << "\tms" << std::endl;
     // std::cout << "t6 " << (t7 - t6).count() * 0.000001 << "\tms" << std::endl;
