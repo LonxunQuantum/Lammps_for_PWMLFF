@@ -131,8 +131,8 @@ void PairPWMLFF::coeff(int narg, char** arg)
 
     // pair_coeff * * 
     int ilo, ihi, jlo, jhi;
-    utils::bounds(FLERR, arg[0], 1, atom->ntypes, ilo, ihi, error);
-    utils::bounds(FLERR, arg[1], 1, atom->ntypes, jlo, jhi, error);
+    utils::bounds(FLERR, arg[0], 1, atom->ntypes, ilo, ihi, error); // arg[0] = *
+    utils::bounds(FLERR, arg[1], 1, atom->ntypes, jlo, jhi, error); // arg[1] = *
 
     int count = 0;
     for(int i = ilo; i <= ihi; i++) {
@@ -143,17 +143,20 @@ void PairPWMLFF::coeff(int narg, char** arg)
         }
     }
 
-    auto type_map_module = module.attr("atom_type").toList();
-    if (ntypes > type_map_module.size() || ntypes != narg - 2)
+    auto atom_type_module = module.attr("atom_type").toList();
+    model_ntypes = atom_type_module.size();
+    if (ntypes > model_ntypes || ntypes != narg - 2)  // type numbers in strucutre file and in pair_coeff should be the same
     {
         error->all(FLERR, "Element mapping is not correct, ntypes = " + std::to_string(ntypes));
     }
     for (int ii = 2; ii < narg; ++ii) {
         int temp = std::stoi(arg[ii]);
-        auto iter = std::find(type_map_module.begin(), type_map_module.end(), temp);   
-        if (iter != type_map_module.end() || arg[ii] == 0)
+        auto iter = std::find(atom_type_module.begin(), atom_type_module.end(), temp);   
+        if (iter != atom_type_module.end() || arg[ii] == 0)
         {
-            type_map.push_back(temp);
+            int index = std::distance(atom_type_module.begin(), iter);
+            model_atom_type_idx.push_back(index);
+            atom_types.push_back(temp);
         }
         else
         {
@@ -287,7 +290,8 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::
     int *tag = atom->tag;
     int nlocal = atom->nlocal;
     int nghost = atom->nghost;
-    int ntypes = atom->ntypes;
+    // int ntypes = atom->ntypes;
+    int ntypes = model_ntypes;
     int n_all = nlocal + nghost;
     double rc2 = cutoff * cutoff;
 
@@ -304,14 +308,16 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::
     imagetype_map.resize(inum);
     neighbor_list.resize(inum * ntypes * max_neighbor);
     dR_neigh.resize(inum * ntypes * max_neighbor * 4);
-    use_type.resize(n_all);
+    // use_type.resize(n_all);
+    std::vector<int> type_to_model(n_all);
 
-    
+
     for (int ii = 0; ii < n_all; ii++)
     {
-        use_type[ii] = type_map[type[ii] - 1];
+        // use_type[ii] = atom_types[type[ii] - 1];
+        type_to_model[ii] = model_atom_type_idx[type[ii] - 1] + 1;
         // type[0], type[1], type[2], type[3], type[4], : 2, 2, 1, 2, 2, ...
-        // type_map[0], type_map[1] : 6, 1
+        // atom_types[0], atom_types[1] : 6, 1
         // use_type[0], use_type[1], use_type[2], use_type[3], use_type[4] : 1, 1, 6, 1, 1, ...
     }
     for (i = 0; i < nlocal; i++) {
@@ -322,7 +328,8 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::
     for (ii = 0; ii < inum; ii++)               // local atoms: 5, CH4
     {    
         i = ilist[ii];                          // 0, 1, 2, 3, 4
-        itype = type[i];                        // 2, 2, 1, 2, 2
+        // itype = type[i];                        // 2, 2, 1, 2, 2
+        itype = type_to_model[i];                   // 1, 1, 3, 1, 1
         jlist = firstneigh[i];
         jnum = numneigh[i];                     // 4, 4, 4, 4, 4
         imagetype_map[ii] = itype - 1;          // 1, 1, 0, 1, 1        python index from 0
@@ -335,7 +342,8 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::
             dely = x[j][1] - x[i][1];
             delz = x[j][2] - x[i][2];
             rsq = delx * delx + dely * dely + delz * delz;
-            jtype = type[j];                    // 2, 1, 2, 2;   2, 1, 2, 2;   2, 2, 2, 2;   2, 2, 1, 2;   2, 2, 1, 2
+            // jtype = type[j];                    // 2, 1, 2, 2;   2, 1, 2, 2;   2, 2, 2, 2;   2, 2, 1, 2;   2, 2, 1, 2
+            jtype = type_to_model[j];               // 1, 3, 1, 1;   1, 3, 1, 1;   1, 1, 1, 1;   1, 1, 3, 1;   1, 1, 3, 1
             if (rsq <= rc2) 
             {
                 etnum = num_neigh[i][jtype - 1];
@@ -392,9 +400,9 @@ void PairPWMLFF::compute(int eflag, int vflag)
     auto int_tensor_options = torch::TensorOptions().dtype(torch::kInt);
     auto float_tensor_options = torch::TensorOptions().dtype(torch::kFloat64);
     torch::Tensor imagetype_map_tensor = torch::from_blob(imagetype_map.data(), {inum}, int_tensor_options).to(device);
-    torch::Tensor neighbor_list_tensor = torch::from_blob(neighborlist.data(), {1, inum, max_neighbor * ntypes}, int_tensor_options).to(device);
-    torch::Tensor dR_neigh_tensor = torch::from_blob(dR_neigh.data(), {1, inum, max_neighbor * ntypes, 4}, float_tensor_options).to(device,dtype);
-    torch::Tensor type_map_tensor = torch::from_blob(type_map.data(), {ntypes}, int_tensor_options).to(device);
+    torch::Tensor neighbor_list_tensor = torch::from_blob(neighborlist.data(), {1, inum, max_neighbor * model_ntypes}, int_tensor_options).to(device);
+    torch::Tensor dR_neigh_tensor = torch::from_blob(dR_neigh.data(), {1, inum, max_neighbor * model_ntypes, 4}, float_tensor_options).to(device,dtype);
+    torch::Tensor atom_type_tensor = torch::from_blob(atom_types.data(), {ntypes}, int_tensor_options).to(device);
     // auto t6 = std::chrono::high_resolution_clock::now();
     /*
       do forward for 4 models
@@ -404,7 +412,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
     all_forces.clear();     // clear the force vector
 
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-        auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, type_map_tensor, dR_neigh_tensor, nghost}).toTuple();
+        auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, atom_type_tensor, dR_neigh_tensor, nghost}).toTuple();
             torch::Tensor Force = output->elements()[2].toTensor().to(torch::kCPU);
             all_forces.push_back(Force);
         if (ff_idx == 0) {

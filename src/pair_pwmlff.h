@@ -53,7 +53,9 @@ namespace LAMMPS_NS {
             std::FILE *explrError_fp;
             torch::Device device = torch::kCPU;
             torch::Dtype dtype = torch::kFloat32;
-            std::vector<int> type_map;
+            std::vector<int> atom_types;
+            std::vector<int> model_atom_type_idx;
+            int model_ntypes;
             double cutoff;
             int max_neighbor;
             std::string model_name;
@@ -61,7 +63,7 @@ namespace LAMMPS_NS {
             // std::vector<int> imagetype, imagetype_map, neighbor_list;
             std::vector<int> imagetype_map, neighbor_list;
             std::vector<double> dR_neigh;
-            std::vector<int> use_type;
+            // std::vector<int> use_type;
 
     };
 
