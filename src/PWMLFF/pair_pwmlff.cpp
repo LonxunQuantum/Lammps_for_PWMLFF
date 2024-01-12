@@ -29,10 +29,6 @@ PairPWMLFF::PairPWMLFF(LAMMPS *lmp) : Pair(lmp)
     me = comm->me;
 	writedata = 1;
 
-    if (me == 0) {
-        explrError_fname = "explr.error";
-        explrError_fp = fopen(&explrError_fname[0], "w");
-    }
 }
 
 PairPWMLFF::~PairPWMLFF()
@@ -71,24 +67,47 @@ void PairPWMLFF::allocate()
 void PairPWMLFF::settings(int narg, char** arg)
 {
     int ff_idx;
-    int iarg;
+    int iarg = 1;  // index of arg after 'num_ff'
     int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    int num_devices;
 
-    if (narg <= 0) error->all(FLERR, "Illegal pair_style command");
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    num_devices = torch::cuda::device_count();
+
+    if (narg <= 0) error->all(FLERR, "Illegal pair_style command"); // numbers of args after 'pair_style pwmlff'
     std::vector<std::string> models;
 
+    num_ff = utils::inumeric(FLERR, arg[0], false, lmp);    // number of models
+    // for (int ii = 1; ii < iarg; ++ii) {
+    //     models.push_back(arg[ii]);                          // model files
+    // }
+    for (int ii = 0; ii < num_ff; ++ii) {
+        models.push_back(arg[iarg++]);                          // model files
+    }
     while (iarg < narg) {
+        if (strcmp(arg[iarg], "out_freq") == 0) {
+            out_freq = utils::inumeric(FLERR, arg[++iarg], false, lmp);
+        } else if (strcmp(arg[iarg], "out_file") == 0) {
+            explrError_fname = arg[++iarg];
+        } 
         iarg++;
     }
-    num_ff = utils::inumeric(FLERR, arg[0], false, lmp);    // number of models
-    for (int ii = 1; ii < iarg; ++ii) {
-        models.push_back(arg[ii]);                          // model files
+
+    if (me == 0) {
+        explrError_fp = fopen(&explrError_fname[0], "w");
     }
-    
+
     // device = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
     torch::DeviceType device_type = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-    device = device_type == torch::kCUDA ?  torch::Device(device_type, rank) : torch::Device(device_type);
+    device = device_type == torch::kCUDA ?  torch::Device(device_type, rank % num_devices) : torch::Device(device_type);
+    if ((device_type == torch::kCUDA) && (rank == 0)) {
+        if (num_devices < comm->nprocs) {
+        std::cout << "----------------------------------------------------------------------------------" << std::endl;
+        std::cout << " Warning: There are " << num_devices << " GPUs available " << std::endl;
+        std::cout << " But have " << comm->nprocs << " MPI processes, may result in poor performance!!!" << std::endl;
+        std::cout << "----------------------------------------------------------------------------------" << std::endl;
+        }
+    }
     dtype = torch::kFloat64;
     if (me == 0) utils::logmesg(this -> lmp, "<---- Loading model ---->");
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
@@ -188,15 +207,16 @@ void PairPWMLFF::init_style()
 }
 /* ---------------------------------------------------------------------- */
 
-double PairPWMLFF::calc_max_f_error(std::vector<torch::Tensor> all_forces)
+std::pair<double, double> PairPWMLFF::calc_max_error(std::vector<torch::Tensor> all_forces, std::vector<torch::Tensor> all_ei)
 {
     int i, j;
     int ff_idx, p_ff_idx;
-    double max_err, err;
+    double max_err, err, max_err_ei, err_ei;
     double num_ff_inv;
     int nlocal = atom->nlocal;
 
     max_err = -1.0;
+    max_err_ei = -1.0;
     num_ff_inv = 1.0 / num_ff;
 
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
@@ -207,20 +227,26 @@ double PairPWMLFF::calc_max_f_error(std::vector<torch::Tensor> all_forces)
 
     std::vector<double> f_ave;
     std::vector<double> f_err[num_ff];
+    std::vector<double> ei_ave;
+    std::vector<double> ei_err[num_ff];
 
     f_ave.resize(nlocal * 3);
+    ei_ave.resize(nlocal);
 
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         f_err[ff_idx].resize(nlocal * 3);
+        ei_err[ff_idx].resize(nlocal);
     }
 
     // sum over all models
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         auto F_ptr = all_forces[ff_idx].accessor<double, 3>();
+        auto Ei_ptr = all_ei[ff_idx].accessor<double, 2>();
         for (i = 0; i < nlocal; i++) {
             f_ave[i * 3 + 0] += F_ptr[0][i][0];
             f_ave[i * 3 + 1] += F_ptr[0][i][1];
             f_ave[i * 3 + 2] += F_ptr[0][i][2];
+            ei_ave[i] += Ei_ptr[0][i];
         }
     }
 
@@ -228,14 +254,19 @@ double PairPWMLFF::calc_max_f_error(std::vector<torch::Tensor> all_forces)
     for (i = 0; i < 3 * nlocal; i++) {
         f_ave[i] *= num_ff_inv;
     }
+    for (i = 0; i < nlocal; i++) {
+        ei_ave[i] *= num_ff_inv;
+    }
 
     // calc error
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         auto F_ptr = all_forces[ff_idx].accessor<double, 3>();
+        auto Ei_ptr = all_ei[ff_idx].accessor<double, 2>();
         for (i = 0; i < nlocal; i++) {
             f_err[ff_idx][i * 3 + 0] = F_ptr[0][i][0] - f_ave[i * 3 + 0];
             f_err[ff_idx][i * 3 + 1] = F_ptr[0][i][1] - f_ave[i * 3 + 1];
             f_err[ff_idx][i * 3 + 2] = F_ptr[0][i][2] - f_ave[i * 3 + 2];
+            ei_err[ff_idx][i] = Ei_ptr[0][i] - ei_ave[i];
         }
     }
 
@@ -246,9 +277,12 @@ double PairPWMLFF::calc_max_f_error(std::vector<torch::Tensor> all_forces)
             err = sqrt(err);
             if (err > max_err) max_err = err;
         }
+        for (j = 0; j < nlocal; j++) {
+            err_ei = ei_err[ff_idx][j];
+            if (err_ei > max_err_ei) max_err_ei = err_ei;
+        }
     }
-
-    return max_err;
+    return std::make_pair(max_err, max_err_ei);
 }
 
 int PairPWMLFF::pack_reverse_comm(int n, int first, double* buf) {
@@ -383,6 +417,8 @@ void PairPWMLFF::compute(int eflag, int vflag)
     double *virial = force->pair->virial;
     int ff_idx;
     // int nlocal = atom->nlocal;
+    int current_timestep = update->ntimestep;
+    // int total_timestep = update->laststep;
     int ntypes = atom->ntypes;
     int nghost = atom->nghost;
     // int n_all = nlocal + nghost;
@@ -390,7 +426,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
     bool calc_egroup_from_mlff = false;
 
     int inum, jnum, itype, jtype;
-    double max_err, global_max_err;    
+    double max_err, global_max_err, max_err_ei, global_max_err_ei;    
     inum = list->inum;
 
     // auto t4 = std::chrono::high_resolution_clock::now();
@@ -410,14 +446,15 @@ void PairPWMLFF::compute(int eflag, int vflag)
       2, 3, 4 for the test
     */
     all_forces.clear();     // clear the force vector
-
+    all_ei.clear();         // clear the atomic energy vector
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, atom_type_tensor, dR_neigh_tensor, nghost}).toTuple();
             torch::Tensor Force = output->elements()[2].toTensor().to(torch::kCPU);
+            torch::Tensor Ei = output->elements()[1].toTensor().to(torch::kCPU);
             all_forces.push_back(Force);
+            all_ei.push_back(Ei);
         if (ff_idx == 0) {
             torch::Tensor Etot = output->elements()[0].toTensor().to(torch::kCPU);
-            torch::Tensor Ei = output->elements()[1].toTensor().to(torch::kCPU);
             torch::Tensor Virial = output->elements()[4].toTensor().to(torch::kCPU);
             // if (output->elements()[4].isTensor()) {
             //     calc_virial_from_mlff = true;
@@ -464,16 +501,21 @@ void PairPWMLFF::compute(int eflag, int vflag)
   */
     if (num_ff > 1) {
         // calculate model deviation with Force
-        max_err = calc_max_f_error(all_forces);
-
-        MPI_Allreduce(&max_err, &global_max_err, 1, MPI_DOUBLE, MPI_MAX, world);    
+        std::pair<double, double> result = calc_max_error(all_forces, all_ei);
+        max_err = result.first;
+        max_err_ei = result.second;
+        MPI_Allreduce(&max_err, &global_max_err, 1, MPI_DOUBLE, MPI_MAX, world);
+        MPI_Allreduce(&max_err_ei, &global_max_err_ei, 1, MPI_DOUBLE, MPI_MAX, world);
 
         max_err_list.push_back(global_max_err);
+        max_err_ei_list.push_back(global_max_err_ei);
 
-        if (me == 0) {
-            fprintf(explrError_fp, "%9d %16.9f\n", max_err_list.size(), global_max_err);
-            fflush(explrError_fp);
-        } 
+        if (current_timestep % out_freq == 0) {
+            if (me == 0) {
+                fprintf(explrError_fp, "%9d %16.9f %16.9f\n", max_err_list.size()-1, global_max_err, global_max_err_ei);
+                fflush(explrError_fp);
+            } 
+        }
     } 
     // std::cout << "t4 " << (t5 - t4).count() * 0.000001 << "\tms" << std::endl;
     // std::cout << "t5 " << (t6 - t5).count() * 0.000001 << "\tms" << std::endl;
