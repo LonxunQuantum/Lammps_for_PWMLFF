@@ -49,6 +49,7 @@ namespace LAMMPS_NS {
             std::vector<torch::jit::script::Module> modules;
             std::vector<torch::Tensor> all_forces;
             std::vector<torch::Tensor> all_ei;
+            std::vector<torch::TensorAccessor<double, 3>> forces_accessors;
 
             std::vector<double> max_err_list;
             std::vector<double> max_err_ei_list;

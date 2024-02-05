@@ -210,16 +210,19 @@ void PairPWMLFF::init_style()
 std::pair<double, double> PairPWMLFF::calc_max_error(std::vector<torch::Tensor> all_forces, std::vector<torch::Tensor> all_ei)
 {
     int i, j;
-    int ff_idx, p_ff_idx;
+    int ff_idx;
     double max_err, err, max_err_ei, err_ei;
     double num_ff_inv;
     int nlocal = atom->nlocal;
+    // int *tag = atom->tag;
 
     max_err = -1.0;
     max_err_ei = -1.0;
     num_ff_inv = 1.0 / num_ff;
 
+    forces_accessors.clear();
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
+        forces_accessors.push_back(all_forces[ff_idx].accessor<double, 3>());
         // p_ff_idx is for reverse comm
         p_ff_idx = ff_idx;
         comm->reverse_comm(this);
@@ -240,12 +243,13 @@ std::pair<double, double> PairPWMLFF::calc_max_error(std::vector<torch::Tensor> 
 
     // sum over all models
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-        auto F_ptr = all_forces[ff_idx].accessor<double, 3>();
+        // auto F_ptr = all_forces[ff_idx].accessor<double, 3>();
         auto Ei_ptr = all_ei[ff_idx].accessor<double, 2>();
         for (i = 0; i < nlocal; i++) {
-            f_ave[i * 3 + 0] += F_ptr[0][i][0];
-            f_ave[i * 3 + 1] += F_ptr[0][i][1];
-            f_ave[i * 3 + 2] += F_ptr[0][i][2];
+            // std::cout << "!!!forces_accessors[ff_idx][0][i][0] = " << tag[i] << " " << forces_accessors[ff_idx][0][i][0] << std::endl;
+            f_ave[i * 3 + 0] += forces_accessors[ff_idx][0][i][0];
+            f_ave[i * 3 + 1] += forces_accessors[ff_idx][0][i][1];
+            f_ave[i * 3 + 2] += forces_accessors[ff_idx][0][i][2];
             ei_ave[i] += Ei_ptr[0][i];
         }
     }
@@ -260,12 +264,13 @@ std::pair<double, double> PairPWMLFF::calc_max_error(std::vector<torch::Tensor> 
 
     // calc error
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-        auto F_ptr = all_forces[ff_idx].accessor<double, 3>();
+        // auto F_ptr = all_forces[ff_idx].accessor<double, 3>();
         auto Ei_ptr = all_ei[ff_idx].accessor<double, 2>();
         for (i = 0; i < nlocal; i++) {
-            f_err[ff_idx][i * 3 + 0] = F_ptr[0][i][0] - f_ave[i * 3 + 0];
-            f_err[ff_idx][i * 3 + 1] = F_ptr[0][i][1] - f_ave[i * 3 + 1];
-            f_err[ff_idx][i * 3 + 2] = F_ptr[0][i][2] - f_ave[i * 3 + 2];
+            // std::cout << "???forces_accessors[ff_idx][0][i][0] = " << tag[i] << " " << forces_accessors[ff_idx][0][i][0] << std::endl;
+            f_err[ff_idx][i * 3 + 0] = forces_accessors[ff_idx][0][i][0] - f_ave[i * 3 + 0];
+            f_err[ff_idx][i * 3 + 1] = forces_accessors[ff_idx][0][i][1] - f_ave[i * 3 + 1];
+            f_err[ff_idx][i * 3 + 2] = forces_accessors[ff_idx][0][i][2] - f_ave[i * 3 + 2];
             ei_err[ff_idx][i] = Ei_ptr[0][i] - ei_ave[i];
         }
     }
@@ -290,11 +295,11 @@ int PairPWMLFF::pack_reverse_comm(int n, int first, double* buf) {
 
     m = 0;
     last = first + n;
+    // auto F_ptr = all_forces[p_ff_idx].accessor<double, 3>();
     for (i = first; i < last; i++) {
-        auto F_ptr = all_forces[p_ff_idx].accessor<double, 3>();
-        buf[m++] = F_ptr[0][i][0];
-        buf[m++] = F_ptr[0][i][1];
-        buf[m++] = F_ptr[0][i][2];
+        buf[m++] = forces_accessors[p_ff_idx][0][i][0];
+        buf[m++] = forces_accessors[p_ff_idx][0][i][1];
+        buf[m++] = forces_accessors[p_ff_idx][0][i][2];
     }
     return m;
 }
@@ -303,12 +308,12 @@ void PairPWMLFF::unpack_reverse_comm(int n, int* list, double* buf) {
     int i, j, m;
 
     m = 0;
+    // auto F_ptr = all_forces[p_ff_idx].accessor<double, 3>();
     for (i = 0; i < n; i++) {
         j = list[i];
-        auto F_ptr = all_forces[p_ff_idx].accessor<double, 3>();
-        F_ptr[0][j][0] += buf[m++];
-        F_ptr[0][j][1] += buf[m++];
-        F_ptr[0][j][2] += buf[m++];
+        forces_accessors[p_ff_idx][0][j][0] += buf[m++];
+        forces_accessors[p_ff_idx][0][j][1] += buf[m++];
+        forces_accessors[p_ff_idx][0][j][2] += buf[m++];
     }
 }
 
