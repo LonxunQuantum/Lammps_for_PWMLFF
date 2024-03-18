@@ -26,15 +26,20 @@ namespace LAMMPS_NS {
             PairPWMLFF(class LAMMPS *);
             ~PairPWMLFF() override;
 
+            int nmax;
+            double*** f_n;
+            double** e_atom_n;
+
             std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> generate_neighdata();
             void compute(int, int) override;
             void settings(int, char **) override;
             void coeff(int, char **) override;
             double init_one(int, int) override;
             void init_style() override;
-            std::pair<double, double> calc_max_error(std::vector<torch::Tensor>, std::vector<torch::Tensor>);
             int pack_reverse_comm(int, int, double* ) override;
             void unpack_reverse_comm(int, int*, double* ) override;
+            void grow_memory();
+            std::pair<double, double> calc_max_error(double***, double**);
 
         protected:
             virtual void allocate();
@@ -47,9 +52,6 @@ namespace LAMMPS_NS {
 
             torch::jit::script::Module module;
             std::vector<torch::jit::script::Module> modules;
-            std::vector<torch::Tensor> all_forces;
-            std::vector<torch::Tensor> all_ei;
-            std::vector<torch::TensorAccessor<double, 3>> forces_accessors;
 
             std::vector<double> max_err_list;
             std::vector<double> max_err_ei_list;
