@@ -1,8 +1,10 @@
 1. cd src/
 
 2. make yes-PWMLFF
+   # for PWMLFF lammps interface
 
-   make yes-USER-NEP # for NEP lammps interface
+   make yes-USER-NEP
+   # for NEP lammps interface
 
 # activate your virtual environment: need to install pytorch2.0
 3. conda activate pytorch2
