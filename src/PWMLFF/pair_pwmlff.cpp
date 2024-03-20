@@ -28,6 +28,7 @@ PairPWMLFF::PairPWMLFF(LAMMPS *lmp) : Pair(lmp)
 {
     me = comm->me;
 	writedata = 1;
+    comm_reverse = 3;
 
 }
 
@@ -37,6 +38,8 @@ PairPWMLFF::~PairPWMLFF()
     {
         memory->destroy(setflag);
         memory->destroy(cutsq);
+        memory->destroy(f_n);
+        memory->destroy(e_atom_n);
     }
 
     if (me == 0) {
@@ -137,6 +140,11 @@ void PairPWMLFF::settings(int narg, char** arg)
     printf("\ncutoff :      %12.6f",cutoff);
     printf("\nmax_neighbor: %5d\n", max_neighbor);
     }
+
+    // since we need num_ff, so well allocate memory here
+    // but not in allocate()
+    memory->create(f_n, num_ff, atom->nmax, 3, "pair_pwmlff:f_n");
+    memory->create(e_atom_n, num_ff, atom->natoms, "pair_pwmlff:e_atom_n");
 }
 
 /* ----------------------------------------------------------------------
@@ -201,13 +209,13 @@ double PairPWMLFF::init_one(int i, int j)
 
 void PairPWMLFF::init_style()
 {
-    if (force->newton_pair == 0) error->all(FLERR, "Pair style PWMATMLFF requires newon pair on");
+    if (force->newton_pair == 0) error->all(FLERR, "Pair style PWMLFF requires newton pair on");
     // Using a nearest neighbor table of type full
     neighbor->add_request(this, NeighConst::REQ_FULL);
 }
 /* ---------------------------------------------------------------------- */
 
-std::pair<double, double> PairPWMLFF::calc_max_error(std::vector<torch::Tensor> all_forces, std::vector<torch::Tensor> all_ei)
+std::pair<double, double> PairPWMLFF::calc_max_error(double ***f_n, double **e_atom_n)
 {
     int i, j;
     int ff_idx;
@@ -220,10 +228,7 @@ std::pair<double, double> PairPWMLFF::calc_max_error(std::vector<torch::Tensor> 
     max_err_ei = -1.0;
     num_ff_inv = 1.0 / num_ff;
 
-    forces_accessors.clear();
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-        forces_accessors.push_back(all_forces[ff_idx].accessor<double, 3>());
-        // p_ff_idx is for reverse comm
         p_ff_idx = ff_idx;
         comm->reverse_comm(this);
     }
@@ -243,14 +248,12 @@ std::pair<double, double> PairPWMLFF::calc_max_error(std::vector<torch::Tensor> 
 
     // sum over all models
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-        // auto F_ptr = all_forces[ff_idx].accessor<double, 3>();
-        auto Ei_ptr = all_ei[ff_idx].accessor<double, 2>();
         for (i = 0; i < nlocal; i++) {
-            // std::cout << "!!!forces_accessors[ff_idx][0][i][0] = " << tag[i] << " " << forces_accessors[ff_idx][0][i][0] << std::endl;
-            f_ave[i * 3 + 0] += forces_accessors[ff_idx][0][i][0];
-            f_ave[i * 3 + 1] += forces_accessors[ff_idx][0][i][1];
-            f_ave[i * 3 + 2] += forces_accessors[ff_idx][0][i][2];
-            ei_ave[i] += Ei_ptr[0][i];
+            // std::cout << "f_n[" << ff_idx << "][" << i << "][0] = " << tag[i] << " " << f_n[ff_idx][i][0] << std::endl;
+            f_ave[i * 3 + 0] += f_n[ff_idx][i][0];
+            f_ave[i * 3 + 1] += f_n[ff_idx][i][1];
+            f_ave[i * 3 + 2] += f_n[ff_idx][i][2];
+            ei_ave[i] += e_atom_n[ff_idx][i];
         }
     }
 
@@ -264,18 +267,15 @@ std::pair<double, double> PairPWMLFF::calc_max_error(std::vector<torch::Tensor> 
 
     // calc error
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-        // auto F_ptr = all_forces[ff_idx].accessor<double, 3>();
-        auto Ei_ptr = all_ei[ff_idx].accessor<double, 2>();
         for (i = 0; i < nlocal; i++) {
-            // std::cout << "???forces_accessors[ff_idx][0][i][0] = " << tag[i] << " " << forces_accessors[ff_idx][0][i][0] << std::endl;
-            f_err[ff_idx][i * 3 + 0] = forces_accessors[ff_idx][0][i][0] - f_ave[i * 3 + 0];
-            f_err[ff_idx][i * 3 + 1] = forces_accessors[ff_idx][0][i][1] - f_ave[i * 3 + 1];
-            f_err[ff_idx][i * 3 + 2] = forces_accessors[ff_idx][0][i][2] - f_ave[i * 3 + 2];
-            ei_err[ff_idx][i] = Ei_ptr[0][i] - ei_ave[i];
+            f_err[ff_idx][i * 3 + 0] = f_n[ff_idx][i][0] - f_ave[i * 3 + 0];
+            f_err[ff_idx][i * 3 + 1] = f_n[ff_idx][i][1] - f_ave[i * 3 + 1];
+            f_err[ff_idx][i * 3 + 2] = f_n[ff_idx][i][2] - f_ave[i * 3 + 2];
+            ei_err[ff_idx][i] = e_atom_n[ff_idx][i] - ei_ave[i];
         }
     }
 
-    // find max error 
+    // find max error
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         for (j = 0; j < nlocal * 3; j += 3) {
             err = f_err[ff_idx][j] * f_err[ff_idx][j] + f_err[ff_idx][j + 1] * f_err[ff_idx][j + 1] + f_err[ff_idx][j + 2] * f_err[ff_idx][j + 2];
@@ -288,6 +288,7 @@ std::pair<double, double> PairPWMLFF::calc_max_error(std::vector<torch::Tensor> 
         }
     }
     return std::make_pair(max_err, max_err_ei);
+
 }
 
 int PairPWMLFF::pack_reverse_comm(int n, int first, double* buf) {
@@ -295,11 +296,10 @@ int PairPWMLFF::pack_reverse_comm(int n, int first, double* buf) {
 
     m = 0;
     last = first + n;
-    // auto F_ptr = all_forces[p_ff_idx].accessor<double, 3>();
     for (i = first; i < last; i++) {
-        buf[m++] = forces_accessors[p_ff_idx][0][i][0];
-        buf[m++] = forces_accessors[p_ff_idx][0][i][1];
-        buf[m++] = forces_accessors[p_ff_idx][0][i][2];
+        buf[m++] = f_n[p_ff_idx][i][0];
+        buf[m++] = f_n[p_ff_idx][i][1];
+        buf[m++] = f_n[p_ff_idx][i][2];
     }
     return m;
 }
@@ -308,13 +308,23 @@ void PairPWMLFF::unpack_reverse_comm(int n, int* list, double* buf) {
     int i, j, m;
 
     m = 0;
-    // auto F_ptr = all_forces[p_ff_idx].accessor<double, 3>();
     for (i = 0; i < n; i++) {
         j = list[i];
-        forces_accessors[p_ff_idx][0][j][0] += buf[m++];
-        forces_accessors[p_ff_idx][0][j][1] += buf[m++];
-        forces_accessors[p_ff_idx][0][j][2] += buf[m++];
+        f_n[p_ff_idx][j][0] += buf[m++];
+        f_n[p_ff_idx][j][1] += buf[m++];
+        f_n[p_ff_idx][j][2] += buf[m++];
     }
+
+}
+
+void PairPWMLFF::grow_memory()
+{
+  if (atom->nmax > nmax) {
+    printf("@@@ allocate new %7d %7d %7d\n", update->ntimestep, nmax, atom->nmax);
+    nmax = atom->nmax;
+    memory->grow(f_n, num_ff, nmax, 3, "pair_pwmlff:f_n");
+    memory->grow(e_atom_n, num_ff, nmax, "pair_pwmlff:e_atom_n");
+  }
 }
 
 std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::generate_neighdata()
@@ -418,7 +428,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
     double **x = atom->x;
     double **f = atom->f;
     int *type = atom->type;
-    int newton_pair = force->newton_pair;
+    // int newton_pair = force->newton_pair;
     double *virial = force->pair->virial;
     int ff_idx;
     // int nlocal = atom->nlocal;
@@ -447,17 +457,27 @@ void PairPWMLFF::compute(int eflag, int vflag)
     // auto t6 = std::chrono::high_resolution_clock::now();
     /*
       do forward for 4 models
-      1 is used for MD
-      2, 3, 4 for the test
+      only 1 is used for MD
+      1, 2, 3, 4 all for the deviation
     */
-    all_forces.clear();     // clear the force vector
-    all_ei.clear();         // clear the atomic energy vector
+
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, atom_type_tensor, dR_neigh_tensor, nghost}).toTuple();
             torch::Tensor Force = output->elements()[2].toTensor().to(torch::kCPU);
             torch::Tensor Ei = output->elements()[1].toTensor().to(torch::kCPU);
-            all_forces.push_back(Force);
-            all_ei.push_back(Ei);
+
+        if (num_ff > 1) {
+            for (int i = 0; i < inum + nghost; i++)
+            {
+                f_n[ff_idx][i][0] = Force[0][i][0].item<double>();
+                f_n[ff_idx][i][1] = Force[0][i][1].item<double>();
+                f_n[ff_idx][i][2] = Force[0][i][2].item<double>();
+            }
+            for (int ii = 0; ii < inum; ii++) {
+                e_atom_n[ff_idx][ii] = Ei[0][ii].item<double>();
+            }
+        }
+
         if (ff_idx == 0) {
             torch::Tensor Etot = output->elements()[0].toTensor().to(torch::kCPU);
             torch::Tensor Virial = output->elements()[4].toTensor().to(torch::kCPU);
@@ -506,7 +526,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
   */
     if (num_ff > 1) {
         // calculate model deviation with Force
-        std::pair<double, double> result = calc_max_error(all_forces, all_ei);
+        std::pair<double, double> result = calc_max_error(f_n, e_atom_n);
         max_err = result.first;
         max_err_ei = result.second;
         MPI_Allreduce(&max_err, &global_max_err, 1, MPI_DOUBLE, MPI_MAX, world);
