@@ -462,19 +462,28 @@ void PairPWMLFF::compute(int eflag, int vflag)
     */
 
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-        auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, atom_type_tensor, dR_neigh_tensor, nghost}).toTuple();
-            torch::Tensor Force = output->elements()[2].toTensor().to(torch::kCPU);
-            torch::Tensor Ei = output->elements()[1].toTensor().to(torch::kCPU);
+        if (ff_idx > 0 && (current_timestep % out_freq != 0)) continue;
 
-        if (num_ff > 1) {
+        auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, atom_type_tensor, dR_neigh_tensor, nghost}).toTuple();
+        torch::Tensor Force = output->elements()[2].toTensor().to(torch::kCPU);
+        torch::Tensor Ei = output->elements()[1].toTensor().to(torch::kCPU);
+
+        auto F_ptr = Force.accessor<double, 3>();
+        auto Ei_ptr = Ei.accessor<double, 2>();
+
+        if (num_ff > 1 && (current_timestep % out_freq == 0)) {
             for (int i = 0; i < inum + nghost; i++)
             {
-                f_n[ff_idx][i][0] = Force[0][i][0].item<double>();
-                f_n[ff_idx][i][1] = Force[0][i][1].item<double>();
-                f_n[ff_idx][i][2] = Force[0][i][2].item<double>();
+                // f_n[ff_idx][i][0] = Force[0][i][0].item<double>();
+                // f_n[ff_idx][i][1] = Force[0][i][1].item<double>();
+                // f_n[ff_idx][i][2] = Force[0][i][2].item<double>();
+                f_n[ff_idx][i][0] = F_ptr[0][i][0];
+                f_n[ff_idx][i][1] = F_ptr[0][i][1];
+                f_n[ff_idx][i][2] = F_ptr[0][i][2];
             }
             for (int ii = 0; ii < inum; ii++) {
-                e_atom_n[ff_idx][ii] = Ei[0][ii].item<double>();
+                // e_atom_n[ff_idx][ii] = Ei[0][ii].item<double>();
+                e_atom_n[ff_idx][ii] = Ei_ptr[0][ii];
             }
         }
 
@@ -487,8 +496,9 @@ void PairPWMLFF::compute(int eflag, int vflag)
             // } else
             //     auto Virial = output->elements()[4];
             // get force
-            auto F_ptr = Force.accessor<double, 3>();
-            auto Ei_ptr = Ei.accessor<double, 2>();
+
+            // auto F_ptr = Force.accessor<double, 3>();
+            // auto Ei_ptr = Ei.accessor<double, 2>();
             auto V_ptr = Virial.accessor<double, 2>();
 
             for (int i = 0; i < inum + nghost; i++)
@@ -524,7 +534,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
       exploration mode.
       calculate the error of the force
   */
-    if (num_ff > 1) {
+    if (num_ff > 1 && (current_timestep % out_freq == 0)) {
         // calculate model deviation with Force
         std::pair<double, double> result = calc_max_error(f_n, e_atom_n);
         max_err = result.first;
@@ -537,7 +547,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
 
         if (current_timestep % out_freq == 0) {
             if (me == 0) {
-                fprintf(explrError_fp, "%9d %16.9f %16.9f\n", max_err_list.size()-1, global_max_err, global_max_err_ei);
+                fprintf(explrError_fp, "%9d %16.9f %16.9f\n", (max_err_list.size()-1)*out_freq, global_max_err, global_max_err_ei);
                 fflush(explrError_fp);
             } 
         }
