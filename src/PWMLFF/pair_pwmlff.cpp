@@ -129,9 +129,13 @@ void PairPWMLFF::settings(int narg, char** arg)
             std::cerr << "Failed to load model :" << e.msg() << std::endl;
         }
     }
-    torch::jit::IValue model_type_value = module.attr("model_type");
-    model_name = model_type_value.toString()->string();
-    std::cout << " ====== the model_type of input model " << model_name <<std::endl;
+    try {
+        torch::jit::IValue model_type_value = module.attr("model_type");
+        model_name = model_type_value.toString()->string();
+    }
+    catch (const torch::jit::ObjectAttributeError& e) {
+        model_name = "DP";
+    }
     if (model_name == "DP") {
         cutoff = module.attr("Rmax").toDouble();
     } else if (model_name == "NEP") {
