@@ -4,7 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
-
+#include <fstream>
 #include "pair_pwmlff.h"
 
 #include "atom.h"
@@ -129,8 +129,24 @@ void PairPWMLFF::settings(int narg, char** arg)
             std::cerr << "Failed to load model :" << e.msg() << std::endl;
         }
     }
-    cutoff = module.attr("Rmax").toDouble();
+    torch::jit::IValue model_type_value = module.attr("model_type");
+    model_name = model_type_value.toString()->string();
+    std::cout << " ====== the model_type of input model " << model_name <<std::endl;
+    if (model_name == "DP") {
+        cutoff = module.attr("Rmax").toDouble();
+    } else if (model_name == "NEP") {
+        // 设置nep的参数
+        cutoff_radial  = module.attr("cutoff_radial").toDouble();
+        cutoff = cutoff_radial;
+        cutoff_angular = module.attr("cutoff_angular").toDouble();
+    } else {
+        std::cout << "ERROR: the model_type of input model " << model_name << " is not supported! Please check the input model! " << std::endl;
+        error->universe_all(FLERR, "ERROR: the model_type of input model is not supported! Please check the input model!");
+    }
+
+    //common params of DP and NEP
     max_neighbor = module.attr("maxNeighborNum").toInt();
+    
     // print information
     if (me == 0) {
     utils::logmesg(this -> lmp, "<---- Load model successful!!! ---->");
@@ -406,6 +422,7 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::
                 num_neigh[i][jtype - 1] += 1;
                 // std::cout << "num_neigh[" << i << "][" << jtype - 1 << "] = " << num_neigh[i][jtype - 1] << std::endl;
                 if (rsq < min_dR) min_dR = rsq;
+                // std::cout<< "nlist index " << index << " j " << j+1 << std::endl;
             }
         }
     }
@@ -419,6 +436,118 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::
         error->universe_all(FLERR, "there are two atoms too close");
     }
     return std::make_tuple(std::move(imagetype_map), std::move(neighbor_list), std::move(dR_neigh));
+    // return std::make_tuple(imagetype, imagetype_map, neighbor_list, dR_neigh);
+}
+
+std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::generate_neighdata_nep()
+{   
+    int i, j, k, ii, jj, inum, jnum, itype, jtype;
+    double xtmp, ytmp, ztmp, delx, dely, delz, rsq, rij;
+    int *ilist, *jlist, *numneigh, **firstneigh;
+    int etnum;
+
+    double **x = atom->x;
+    int *type = atom->type;
+    int *tag = atom->tag;
+    int nlocal = atom->nlocal;
+    int nghost = atom->nghost;
+    // int ntypes = atom->ntypes;
+    int ntypes = model_ntypes;
+    int n_all = nlocal + nghost;
+    double rc2 = cutoff * cutoff;
+
+    double min_dR = 1000;
+    double min_dR_all;
+
+    inum = list->inum;
+    ilist = list->ilist;
+    numneigh = list->numneigh;
+    firstneigh = list->firstneigh;
+
+    std::vector<std::vector<int>> num_neigh(inum, std::vector<int>(ntypes));
+    // imagetype.resize(inum);
+    imagetype_map.assign(inum, -1);
+    neighbor_list.assign(inum * ntypes * max_neighbor, 0);
+    neighbor_type_list.assign(inum * ntypes * max_neighbor, -1);
+    dR_neigh.assign(inum * ntypes * max_neighbor * 4, 0);
+    // use_type.resize(n_all);
+    std::vector<int> type_to_model(n_all);
+
+
+    for (int ii = 0; ii < n_all; ii++)
+    {
+        // use_type[ii] = atom_types[type[ii] - 1];
+        type_to_model[ii] = model_atom_type_idx[type[ii] - 1] + 1;
+        // type[0], type[1], type[2], type[3], type[4], : 2, 2, 1, 2, 2, ...
+        // atom_types[0], atom_types[1] : 6, 1
+        // use_type[0], use_type[1], use_type[2], use_type[3], use_type[4] : 1, 1, 6, 1, 1, ...
+    }
+    for (i = 0; i < nlocal; i++) {
+        for (j = 0; j < ntypes; j++) {
+            num_neigh[i][j] = 0;
+        }
+    }
+    for (ii = 0; ii < inum; ii++)               // local atoms: 5, CH4
+    {    
+        i = ilist[ii];                          // 0, 1, 2, 3, 4
+        // itype = type[i];                        // 2, 2, 1, 2, 2
+        itype = type_to_model[i];                   // 1, 1, 3, 1, 1
+        jlist = firstneigh[i];
+        jnum = numneigh[i];                     // 4, 4, 4, 4, 4
+        imagetype_map[ii] = itype - 1;          // 1, 1, 0, 1, 1        python index from 0
+        // imagetype[ii] = use_type[i];            // 1, 1, 6, 1, 1
+        int count_radial = 0;
+        for (jj = 0; jj < jnum; jj++)
+        {
+            j = jlist[jj];                      // 1, 2, 3, 4;   0, 2, 3, 4;   0, 1, 3, 4;   0, 1, 2, 4;   0, 1, 2, 3
+            delx = x[j][0] - x[i][0];
+            dely = x[j][1] - x[i][1];
+            delz = x[j][2] - x[i][2];
+            rsq = delx * delx + dely * dely + delz * delz;
+            // jtype = type[j];                    // 2, 1, 2, 2;   2, 1, 2, 2;   2, 2, 2, 2;   2, 2, 1, 2;   2, 2, 1, 2
+            jtype = type_to_model[j];               // 1, 3, 1, 1;   1, 3, 1, 1;   1, 1, 1, 1;   1, 1, 3, 1;   1, 1, 3, 1
+            if (rsq <= rc2) 
+            {   
+                //Wuxing: the DP use i to set dR_neigh, but I think it should be ii, the output of ilist is 0, 1, 2, 3, 4... , same as i 
+
+                // etnum = num_neigh[i][jtype - 1]; 
+                // rij = sqrt(rsq);
+                // int index = i * ntypes * max_neighbor + (jtype - 1) * max_neighbor + etnum;
+                // dR_neigh[index * 4 + 0] = rij;
+                // dR_neigh[index * 4 + 1] = delx;
+                // dR_neigh[index * 4 + 2] = dely;
+                // dR_neigh[index * 4 + 3] = delz;
+                // neighbor_list[index] = j + 1;
+                // num_neigh[i][jtype - 1] += 1;
+                // // std::cout << "num_neigh[" << i << "][" << jtype - 1 << "] = " << num_neigh[i][jtype - 1] << std::endl;
+                // if (rsq < min_dR) min_dR = rsq;
+
+                rij = sqrt(rsq);
+                int index = i * ntypes * max_neighbor;
+                neighbor_list[index + count_radial ] = j + 1;
+                neighbor_type_list[index + count_radial] = jtype-1;
+                dR_neigh[index*4 + 4*count_radial  ] = rij;
+                dR_neigh[index*4 + 4*count_radial+1] = delx;
+                dR_neigh[index*4 + 4*count_radial+2] = dely;
+                dR_neigh[index*4 + 4*count_radial+3] = delz;
+                count_radial++;
+                // std::cout<< "atom_I_ii " << ii << " index_I " << i << " type_I " << itype << "    atom_j_jj " << jj << " index_j " << j << " type_j " << jtype << " neigbor_start "<< index << std::endl;
+
+                // std::cout<< "nlist index " << index + count_radial << " count " << count_radial << " j " << j+1 << std::endl;
+
+            }
+        }
+    }
+
+    MPI_Allreduce(&min_dR, &min_dR_all, 1, MPI_DOUBLE, MPI_MIN, world);
+
+    if (min_dR_all < 0.81) {
+        if (me == 0) {
+            std::cout << "ERROR: there are two atoms too close, min_dR_all = " << min_dR_all << std::endl;
+        }
+        error->universe_all(FLERR, "there are two atoms too close");
+    }
+    return std::make_tuple(std::move(imagetype_map), std::move(neighbor_list), std::move(neighbor_type_list), std::move(dR_neigh));
     // return std::make_tuple(imagetype, imagetype_map, neighbor_list, dR_neigh);
 }
 
@@ -445,15 +574,90 @@ void PairPWMLFF::compute(int eflag, int vflag)
     inum = list->inum;
 
     // auto t4 = std::chrono::high_resolution_clock::now();
-    auto [imagetype_map, neighborlist, dR_neigh] = generate_neighdata();
+    std::vector<int> imagetype_map, neighbor_list, neighbor_type_list;
+    std::vector<double> dR_neigh;
+
+
+    if (model_name == "DP") {
+        std::tie(imagetype_map, neighbor_list, dR_neigh) = generate_neighdata();
+    } else if (model_name == "NEP") {
+        // std::cout<< "==== do nep find neigh ====" << std::endl;
+        std::tie(imagetype_map, neighbor_list, neighbor_type_list, dR_neigh) = generate_neighdata_nep();
+
+        // std::ofstream type_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/imagetype_map.txt");
+        // std::ofstream nl_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/neighbor_list.txt");
+        // std::ofstream nlt_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/neighbor_type_list.txt");
+        // std::ofstream rij_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/dR_neigh.txt");
+
+        // std::cout<< "==========imagetype_map: " << std::endl;
+        // for (const auto& element : imagetype_map) {
+        //     type_txt << element << std::endl;
+        // }
+        // type_txt.close();
+        // for (const auto& element : neighbor_list) {
+        //     nl_txt << element << std::endl;
+        // }
+        // nl_txt.close();
+        // for (const auto& element : neighbor_type_list) {
+        //     nlt_txt << element << std::endl;
+        // }
+        // nlt_txt.close();
+        // for (const auto& element : dR_neigh) {
+        //     rij_txt << element << std::endl;
+        // }
+        // rij_txt.close();
+
+        // for (int i_ =0; i_ <inum; i_++ ) {
+        //     std::cout<< "  " << i_ << "," << imagetype_map[i_] << "  ";
+        // }
+        // std::cout<<std::endl;
+
+        // std::cout<< "neighbor_list: " << std::endl;
+        // for (int i_ =0; i_ <inum; i_++ ) {
+        //     std::cout<< "idx " << i_ << std::endl;
+        //     int index = i_ * model_ntypes * max_neighbor;
+        //     for (int j_ =0; j_ <max_neighbor * model_ntypes; j_++ ) {
+        //         std::cout<< neighbor_list[index + j_ ] << ' ';
+        //     }
+        //     std::cout<<std::endl;
+        // }
+        // std::cout<<std::endl;
+
+        // std::cout<< "neighbor_type_list: " << std::endl;
+        // for (int i_ =0; i_ <inum; i_++ ) {
+        //     std::cout<< "idx " << i_ << std::endl;
+        //     int index = i_ * model_ntypes * max_neighbor;
+        //     for (int j_ =0; j_ <max_neighbor * model_ntypes; j_++ ) {
+        //         std::cout<< neighbor_type_list[index + j_ ] << ' ';
+        //     }
+        //     std::cout<<std::endl;
+        // }
+        // std::cout<<std::endl;
+
+        // std::cout<< "dR_neigh: " << std::endl;
+        // for (int i_ =0; i_ <inum; i_++ ) {
+        //     std::cout<< "idx " << i_ << std::endl;
+        //     int index = i_ * model_ntypes * max_neighbor * 4;
+        //     for (int j_ =0; j_ <max_neighbor * model_ntypes * 4; j_++ ) {
+        //         std::cout<< dR_neigh[index + j_ ] << ' ';
+        //     }
+        //     std::cout<<std::endl;
+        // }
+    }
     if (inum == 0) return;
     // auto t5 = std::chrono::high_resolution_clock::now();
     auto int_tensor_options = torch::TensorOptions().dtype(torch::kInt);
     auto float_tensor_options = torch::TensorOptions().dtype(torch::kFloat64);
     torch::Tensor imagetype_map_tensor = torch::from_blob(imagetype_map.data(), {inum}, int_tensor_options).to(device);
-    torch::Tensor neighbor_list_tensor = torch::from_blob(neighborlist.data(), {1, inum, max_neighbor * model_ntypes}, int_tensor_options).to(device);
+    torch::Tensor neighbor_list_tensor = torch::from_blob(neighbor_list.data(), {1, inum, max_neighbor * model_ntypes}, int_tensor_options).to(device);
     torch::Tensor dR_neigh_tensor = torch::from_blob(dR_neigh.data(), {1, inum, max_neighbor * model_ntypes, 4}, float_tensor_options).to(device,dtype);
     torch::Tensor atom_type_tensor = torch::from_blob(atom_types.data(), {ntypes}, int_tensor_options).to(device);
+        
+    torch::Tensor neighbor_type_list_tensor;
+    if (model_name == "NEP") {
+        // std::cout<< "=========do neighbor_type_list to tensor ==========="<<std::endl;
+        neighbor_type_list_tensor = torch::from_blob(neighbor_type_list.data(), {1, inum, max_neighbor * model_ntypes}, int_tensor_options).to(device);
+    }
     // auto t6 = std::chrono::high_resolution_clock::now();
     /*
       do forward for 4 models
@@ -463,11 +667,28 @@ void PairPWMLFF::compute(int eflag, int vflag)
 
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         if (ff_idx > 0 && (current_timestep % out_freq != 0)) continue;
-
-        auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, atom_type_tensor, dR_neigh_tensor, nghost}).toTuple();
-        torch::Tensor Force = output->elements()[2].toTensor().to(torch::kCPU);
-        torch::Tensor Ei = output->elements()[1].toTensor().to(torch::kCPU);
-
+        torch::Tensor Force;
+        torch::Tensor Ei;
+        torch::Tensor Etot;
+        torch::Tensor Virial;
+        if (model_name == "DP") {
+            auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, atom_type_tensor, dR_neigh_tensor, nghost}).toTuple();
+            Force = output->elements()[2].toTensor().to(torch::kCPU);
+            Ei = output->elements()[1].toTensor().to(torch::kCPU);
+            if (ff_idx == 0) {
+                Etot = output->elements()[0].toTensor().to(torch::kCPU);
+                Virial = output->elements()[4].toTensor().to(torch::kCPU);            
+            }
+        } else if (model_name == "NEP") {
+            // std::cout<< "=========do nep forward=========== nghost "<< nghost << std::endl;
+            auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, atom_type_tensor, dR_neigh_tensor, neighbor_type_list_tensor, nghost}).toTuple();
+            Force = output->elements()[2].toTensor().to(torch::kCPU);
+            Ei = output->elements()[1].toTensor().to(torch::kCPU);
+            if (ff_idx == 0) {
+                Etot = output->elements()[0].toTensor().to(torch::kCPU);
+                Virial = output->elements()[4].toTensor().to(torch::kCPU);            
+            }
+        }
         auto F_ptr = Force.accessor<double, 3>();
         auto Ei_ptr = Ei.accessor<double, 2>();
 
@@ -488,8 +709,8 @@ void PairPWMLFF::compute(int eflag, int vflag)
         }
 
         if (ff_idx == 0) {
-            torch::Tensor Etot = output->elements()[0].toTensor().to(torch::kCPU);
-            torch::Tensor Virial = output->elements()[4].toTensor().to(torch::kCPU);
+            // Etot = output->elements()[0].toTensor().to(torch::kCPU);
+            // Virial = output->elements()[4].toTensor().to(torch::kCPU);
             // if (output->elements()[4].isTensor()) {
             //     calc_virial_from_mlff = true;
             //     torch::Tensor Virial = output->elements()[4].toTensor().to(torch::kCPU);

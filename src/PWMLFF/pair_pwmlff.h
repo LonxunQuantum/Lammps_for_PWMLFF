@@ -31,6 +31,7 @@ namespace LAMMPS_NS {
             double** e_atom_n;
 
             std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> generate_neighdata();
+            std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<double>> generate_neighdata_nep();
             void compute(int, int) override;
             void settings(int, char **) override;
             void coeff(int, char **) override;
@@ -64,12 +65,18 @@ namespace LAMMPS_NS {
             std::vector<int> atom_types;
             std::vector<int> model_atom_type_idx;
             int model_ntypes;
+            // DP params
             double cutoff;
+            // NEP params
+            double cutoff_radial;
+            double cutoff_angular;
+            //common params
             int max_neighbor;
             std::string model_name;
 
             // std::vector<int> imagetype, imagetype_map, neighbor_list;
             std::vector<int> imagetype_map, neighbor_list;
+            std::vector<int> neighbor_type_list; // for nep find neigh and forward
             std::vector<double> dR_neigh;
             // std::vector<int> use_type;
 
