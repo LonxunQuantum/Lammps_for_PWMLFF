@@ -1,4 +1,8 @@
 /*
+
+  this code from https://github.com/brucefan1983/NEP_CPU
+  
+  the licnese of NEP_CPU is as follows:
     Copyright 2022 Zheyong Fan, Junjie Wang, Eric Lindgren
     This file is part of NEP_CPU.
     NEP_CPU is free software: you can redistribute it and/or modify
@@ -11,6 +15,12 @@
     GNU General Public License for more details.
     You should have received a copy of the GNU General Public License
     along with NEP_CPU.  If not, see <http://www.gnu.org/licenses/>.
+
+List of modified records by Wu Xingxing (email stars_sparkling@163.com)
+1. Added network structure support for NEP4 model independent bias
+    Modified force field reading;
+    Modified the applyann_one_layer method;
+2. In order to adapt to multiple model biases, the function has been added with computefor_lamps() and the int model_index parameter has been added  
 */
 
 /*----------------------------------------------------------------------------80
@@ -1757,7 +1767,8 @@ void find_force_radial_for_lammps(
 #endif
   double** g_force,
   double g_total_virial[6],
-  double** g_virial)
+  double** g_virial,
+  int model_index)
 {
   for (int ii = 0; ii < N; ++ii) {
     int n1 = g_ilist[ii];
@@ -1840,7 +1851,7 @@ void find_force_radial_for_lammps(
       g_total_virial[3] -= r12[0] * f12[1]; // xy
       g_total_virial[4] -= r12[0] * f12[2]; // xz
       g_total_virial[5] -= r12[1] * f12[2]; // yz
-      if (g_virial) {                       // only calculate the per-atom virial when required
+      if (g_virial and model_index==0) {                       // only calculate the per-atom virial when required, for multi models, only calculate the first model
         g_virial[n2][0] -= r12[0] * f12[0]; // xx
         g_virial[n2][1] -= r12[1] * f12[1]; // yy
         g_virial[n2][2] -= r12[2] * f12[2]; // zz
@@ -2578,6 +2589,7 @@ void NEP3::init_from_file(const std::string& potential_filename, const bool is_r
   }
 
   element_list.resize(paramb.num_types);
+  element_atomic_number_list.resize(paramb.num_types);
   for (int n = 0; n < paramb.num_types; ++n) {
     int atomic_number = 0;
     element_list[n] = tokens[2 + n];
@@ -2587,6 +2599,7 @@ void NEP3::init_from_file(const std::string& potential_filename, const bool is_r
         break;
       }
     }
+    element_atomic_number_list[n] = atomic_number;
     zbl.atomic_numbers[n] = atomic_number;
     dftd3.atomic_number[n] = atomic_number - 1;
   }
@@ -3261,7 +3274,8 @@ void NEP3::compute_for_lammps(
   double total_virial[6],
   double* potential,
   double** force,
-  double** virial)
+  double** virial,
+  int model_index)
 {
   if (num_atoms < nlocal) {
     Fp.resize(nlocal * annmb.dim);
@@ -3279,7 +3293,7 @@ void NEP3::compute_for_lammps(
 #ifdef USE_TABLE_FOR_RADIAL_FUNCTIONS
     gnp_radial.data(),
 #endif
-    force, total_virial, virial);
+    force, total_virial, virial, model_index);
   find_force_angular_for_lammps(
     paramb, annmb, nlocal, N, ilist, NN, NL, type, pos, Fp.data(), sum_fxyz.data(),
 #ifdef USE_TABLE_FOR_RADIAL_FUNCTIONS

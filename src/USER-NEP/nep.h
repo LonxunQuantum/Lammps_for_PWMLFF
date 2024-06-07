@@ -1,4 +1,8 @@
 /*
+
+  this code from https://github.com/brucefan1983/NEP_CPU
+  
+  the licnese of NEP_CPU is as follows:
     Copyright 2022 Zheyong Fan, Junjie Wang, Eric Lindgren
     This file is part of NEP_CPU.
     NEP_CPU is free software: you can redistribute it and/or modify
@@ -11,6 +15,12 @@
     GNU General Public License for more details.
     You should have received a copy of the GNU General Public License
     along with NEP_CPU.  If not, see <http://www.gnu.org/licenses/>.
+
+List of modified records by Wu Xingxing (email stars_sparkling@163.com)
+1. Added network structure support for NEP4 model independent bias
+    Modified force field reading;
+    Modified the applyann_one_layer method;
+2. In order to adapt to multiple model biases, the function has been added with computefor_lamps() and the int model_index parameter has been added  
 */
 
 #pragma once
@@ -164,7 +174,8 @@ public:
     double total_virial[6],  // total virial for the current processor
     double* potential,       // eatom or nullptr
     double** f,              // atom->f
-    double** virial          // cvatom or nullptr
+    double** virial,          // cvatom or nullptr
+    int model_index          // for multimodels' deviation
   );
 
   int num_atoms = 0;
@@ -180,6 +191,7 @@ public:
   std::vector<double> sum_fxyz;
   std::vector<double> parameters;
   std::vector<std::string> element_list;
+  std::vector<int> element_atomic_number_list;
   void update_potential(double* parameters, ANN& ann);
   void allocate_memory(const int N);
 

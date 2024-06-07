@@ -103,64 +103,77 @@ void PairPWMLFF::settings(int narg, char** arg)
     // device = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
     torch::DeviceType device_type = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
     device = device_type == torch::kCUDA ?  torch::Device(device_type, rank % num_devices) : torch::Device(device_type);
-    if ((device_type == torch::kCUDA) && (rank == 0)) {
-        if (num_devices < comm->nprocs) {
-        std::cout << "----------------------------------------------------------------------------------" << std::endl;
-        std::cout << " Warning: There are " << num_devices << " GPUs available " << std::endl;
-        std::cout << " But have " << comm->nprocs << " MPI processes, may result in poor performance!!!" << std::endl;
-        std::cout << "----------------------------------------------------------------------------------" << std::endl;
-        }
-    }
     dtype = torch::kFloat64;
     if (me == 0) utils::logmesg(this -> lmp, "<---- Loading model ---->");
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         std::string model_file = models[ff_idx];
         try
-        {
-            // module = torch::jit::load(model_file, c10::Device(device));
+        {   // load jit model, they are DP, or NEP
+            // module = torch::jit::load(model_file, c10::Device(device)); 
             module = torch::jit::load(model_file, device);
             module.to(dtype);
             // module.eval();
             modules.push_back(module);
-            if (me == 0) printf("\nLoading model file:   %s\n", model_file.c_str());
+            if (me == 0) printf("\nLoading jitscript model file:   %s\n", model_file.c_str());
+            model_type = 0;
         }
         catch (const c10::Error e)
         {
-            std::cerr << "Failed to load model :" << e.msg() << std::endl;
+            // load txt format model file, it should be nep
+            try {
+                bool is_rank_0 = (comm->me == 0);
+                nep_model.init_from_file(model_file, is_rank_0);
+                nep_models.push_back(nep_model);
+                if (me == 0) printf("\nLoading txt model file:   %s\n", model_file.c_str());
+                model_type = 1;
+            } catch (const c10::Error e) {
+                std::cerr << "Failed to load model :" << e.msg() << std::endl;
+            }
         }
     }
-    try {
-        torch::jit::IValue model_type_value = module.attr("model_type");
-        model_name = model_type_value.toString()->string();
-    }
-    catch (const torch::jit::ObjectAttributeError& e) {
-        model_name = "DP";
-    }
-    if (model_name == "DP") {
-        cutoff = module.attr("Rmax").toDouble();
-    } else if (model_name == "NEP") {
-        // 设置nep的参数
-        cutoff_radial  = module.attr("cutoff_radial").toDouble();
-        cutoff = cutoff_radial;
-        cutoff_angular = module.attr("cutoff_angular").toDouble();
-    } else {
-        std::cout << "ERROR: the model_type of input model " << model_name << " is not supported! Please check the input model! " << std::endl;
-        error->universe_all(FLERR, "ERROR: the model_type of input model is not supported! Please check the input model!");
-    }
+    if (model_type == 0) {
+        if ((device_type == torch::kCUDA) && (rank == 0)) {
+            if (num_devices < comm->nprocs) {
+            std::cout << "----------------------------------------------------------------------------------" << std::endl;
+            std::cout << " Warning: There are " << num_devices << " GPUs available " << std::endl;
+            std::cout << " But have " << comm->nprocs << " MPI processes, may result in poor performance!!!" << std::endl;
+            std::cout << "----------------------------------------------------------------------------------" << std::endl;
+            }
+        }
+        try {
+            torch::jit::IValue model_type_value = module.attr("model_type");
+            model_name = model_type_value.toString()->string();
+        }
+        catch (const torch::jit::ObjectAttributeError& e) {
+            model_name = "DP";
+        }
+        if (model_name == "DP") {
+            cutoff = module.attr("Rmax").toDouble();
+        } else if (model_name == "NEP") {
+            // 设置nep的参数
+            cutoff_radial  = module.attr("cutoff_radial").toDouble();
+            cutoff = cutoff_radial;
+            cutoff_angular = module.attr("cutoff_angular").toDouble();
+        } else {
+            std::cout << "ERROR: the model_type of input model " << model_name << " is not supported! Please check the input model! " << std::endl;
+            error->universe_all(FLERR, "ERROR: the model_type of input model is not supported! Please check the input model!");
+        }
 
-    //common params of DP and NEP
-    max_neighbor = module.attr("maxNeighborNum").toInt();
-    
-    // print information
-    if (me == 0) {
-    utils::logmesg(this -> lmp, "<---- Load model successful!!! ---->");
-    printf("\nDevice:       %s", device == torch::kCPU ? "CPU" : "GPU");
-    printf("\nModel type:   %5d",5);
-    printf("\nModel nums:   %5d",num_ff);
-    printf("\ncutoff :      %12.6f",cutoff);
-    printf("\nmax_neighbor: %5d\n", max_neighbor);
+        //common params of DP and NEP
+        max_neighbor = module.attr("maxNeighborNum").toInt();
+        
+        // print information
+        if (me == 0) {
+        utils::logmesg(this -> lmp, "<---- Load model successful!!! ---->");
+        printf("\nDevice:       %s", device == torch::kCPU ? "CPU" : "GPU");
+        printf("\nModel type:   %5d",5);
+        printf("\nModel nums:   %5d",num_ff);
+        printf("\ncutoff :      %12.6f",cutoff);
+        printf("\nmax_neighbor: %5d\n", max_neighbor);
+        }
+    } else if (model_type == 1) {
+        cutoff = nep_model.paramb.rc_radial;
     }
-
     // since we need num_ff, so well allocate memory here
     // but not in allocate()
     memory->create(f_n, num_ff, atom->nmax, 3, "pair_pwmlff:f_n");
@@ -190,27 +203,50 @@ void PairPWMLFF::coeff(int narg, char** arg)
         }
     }
 
-    auto atom_type_module = module.attr("atom_type").toList();
-    model_ntypes = atom_type_module.size();
-    if (ntypes > model_ntypes || ntypes != narg - 2)  // type numbers in strucutre file and in pair_coeff should be the same
-    {
-        error->all(FLERR, "Element mapping is not correct, ntypes = " + std::to_string(ntypes));
-    }
-    for (int ii = 2; ii < narg; ++ii) {
-        int temp = std::stoi(arg[ii]);
-        auto iter = std::find(atom_type_module.begin(), atom_type_module.end(), temp);   
-        if (iter != atom_type_module.end() || arg[ii] == 0)
+    if (model_type == 0) {
+        auto atom_type_module = module.attr("atom_type").toList();
+        model_ntypes = atom_type_module.size();
+        if (ntypes > model_ntypes || ntypes != narg - 2)  // type numbers in strucutre file and in pair_coeff should be the same
         {
-            int index = std::distance(atom_type_module.begin(), iter);
-            model_atom_type_idx.push_back(index);
-            atom_types.push_back(temp);
+            error->all(FLERR, "Element mapping is not correct, ntypes = " + std::to_string(ntypes));
         }
-        else
+        for (int ii = 2; ii < narg; ++ii) {
+            int temp = std::stoi(arg[ii]);
+            auto iter = std::find(atom_type_module.begin(), atom_type_module.end(), temp);   
+            if (iter != atom_type_module.end() || arg[ii] == 0)
+            {
+                int index = std::distance(atom_type_module.begin(), iter);
+                model_atom_type_idx.push_back(index);
+                atom_types.push_back(temp);
+            }
+            else
+            {
+                error->all(FLERR, "This element is not included in the machine learning force field");
+            }
+        }
+    } else if (model_type == 1) {
+        std::vector<int> atom_type_module = nep_model.element_atomic_number_list;
+        model_ntypes = atom_type_module.size();
+        if (ntypes > model_ntypes || ntypes != narg - 2)  // type numbers in strucutre file and in pair_coeff should be the same
         {
-            error->all(FLERR, "This element is not included in the machine learning force field");
+            error->all(FLERR, "Element mapping is not correct, ntypes = " + std::to_string(ntypes));
         }
+        for (int ii = 2; ii < narg; ++ii) {
+            int temp = std::stoi(arg[ii]);
+            auto iter = std::find(atom_type_module.begin(), atom_type_module.end(), temp);   
+            if (iter != atom_type_module.end() || arg[ii] == 0)
+            {
+                int index = std::distance(atom_type_module.begin(), iter);
+                model_atom_type_idx.push_back(index);
+                atom_types.push_back(temp);
+                // std::cout<<"=== the config atom type "<< temp << " index in ff is "  << index << std::endl;
+            }
+            else
+            {
+                error->all(FLERR, "This element is not included in the machine learning force field");
+            }
+        }        
     }
-
    if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
 
 }
@@ -577,188 +613,248 @@ void PairPWMLFF::compute(int eflag, int vflag)
     double max_err, global_max_err, max_err_ei, global_max_err_ei;    
     inum = list->inum;
 
-    // auto t4 = std::chrono::high_resolution_clock::now();
-    std::vector<int> imagetype_map, neighbor_list, neighbor_type_list;
-    std::vector<double> dR_neigh;
+    if (model_type == 0) {
+        // auto t4 = std::chrono::high_resolution_clock::now();
+        std::vector<int> imagetype_map, neighbor_list, neighbor_type_list;
+        std::vector<double> dR_neigh;
 
 
-    if (model_name == "DP") {
-        std::tie(imagetype_map, neighbor_list, dR_neigh) = generate_neighdata();
-    } else if (model_name == "NEP") {
-        // std::cout<< "==== do nep find neigh ====" << std::endl;
-        std::tie(imagetype_map, neighbor_list, neighbor_type_list, dR_neigh) = generate_neighdata_nep();
-
-        // std::ofstream type_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/imagetype_map.txt");
-        // std::ofstream nl_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/neighbor_list.txt");
-        // std::ofstream nlt_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/neighbor_type_list.txt");
-        // std::ofstream rij_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/dR_neigh.txt");
-
-        // std::cout<< "==========imagetype_map: " << std::endl;
-        // for (const auto& element : imagetype_map) {
-        //     type_txt << element << std::endl;
-        // }
-        // type_txt.close();
-        // for (const auto& element : neighbor_list) {
-        //     nl_txt << element << std::endl;
-        // }
-        // nl_txt.close();
-        // for (const auto& element : neighbor_type_list) {
-        //     nlt_txt << element << std::endl;
-        // }
-        // nlt_txt.close();
-        // for (const auto& element : dR_neigh) {
-        //     rij_txt << element << std::endl;
-        // }
-        // rij_txt.close();
-
-        // for (int i_ =0; i_ <inum; i_++ ) {
-        //     std::cout<< "  " << i_ << "," << imagetype_map[i_] << "  ";
-        // }
-        // std::cout<<std::endl;
-
-        // std::cout<< "neighbor_list: " << std::endl;
-        // for (int i_ =0; i_ <inum; i_++ ) {
-        //     std::cout<< "idx " << i_ << std::endl;
-        //     int index = i_ * model_ntypes * max_neighbor;
-        //     for (int j_ =0; j_ <max_neighbor * model_ntypes; j_++ ) {
-        //         std::cout<< neighbor_list[index + j_ ] << ' ';
-        //     }
-        //     std::cout<<std::endl;
-        // }
-        // std::cout<<std::endl;
-
-        // std::cout<< "neighbor_type_list: " << std::endl;
-        // for (int i_ =0; i_ <inum; i_++ ) {
-        //     std::cout<< "idx " << i_ << std::endl;
-        //     int index = i_ * model_ntypes * max_neighbor;
-        //     for (int j_ =0; j_ <max_neighbor * model_ntypes; j_++ ) {
-        //         std::cout<< neighbor_type_list[index + j_ ] << ' ';
-        //     }
-        //     std::cout<<std::endl;
-        // }
-        // std::cout<<std::endl;
-
-        // std::cout<< "dR_neigh: " << std::endl;
-        // for (int i_ =0; i_ <inum; i_++ ) {
-        //     std::cout<< "idx " << i_ << std::endl;
-        //     int index = i_ * model_ntypes * max_neighbor * 4;
-        //     for (int j_ =0; j_ <max_neighbor * model_ntypes * 4; j_++ ) {
-        //         std::cout<< dR_neigh[index + j_ ] << ' ';
-        //     }
-        //     std::cout<<std::endl;
-        // }
-    }
-    if (inum == 0) return;
-    // auto t5 = std::chrono::high_resolution_clock::now();
-    auto int_tensor_options = torch::TensorOptions().dtype(torch::kInt);
-    auto float_tensor_options = torch::TensorOptions().dtype(torch::kFloat64);
-    torch::Tensor imagetype_map_tensor = torch::from_blob(imagetype_map.data(), {inum}, int_tensor_options).to(device);
-    torch::Tensor neighbor_list_tensor = torch::from_blob(neighbor_list.data(), {1, inum, max_neighbor * model_ntypes}, int_tensor_options).to(device);
-    torch::Tensor dR_neigh_tensor = torch::from_blob(dR_neigh.data(), {1, inum, max_neighbor * model_ntypes, 4}, float_tensor_options).to(device,dtype);
-    torch::Tensor atom_type_tensor = torch::from_blob(atom_types.data(), {ntypes}, int_tensor_options).to(device);
-        
-    torch::Tensor neighbor_type_list_tensor;
-    if (model_name == "NEP") {
-        // std::cout<< "=========do neighbor_type_list to tensor ==========="<<std::endl;
-        neighbor_type_list_tensor = torch::from_blob(neighbor_type_list.data(), {1, inum, max_neighbor * model_ntypes}, int_tensor_options).to(device);
-    }
-    // auto t6 = std::chrono::high_resolution_clock::now();
-    /*
-      do forward for 4 models
-      only 1 is used for MD
-      1, 2, 3, 4 all for the deviation
-    */
-
-    for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-        if (ff_idx > 0 && (current_timestep % out_freq != 0)) continue;
-        torch::Tensor Force;
-        torch::Tensor Ei;
-        torch::Tensor Etot;
-        torch::Tensor Virial;
         if (model_name == "DP") {
-            auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, atom_type_tensor, dR_neigh_tensor, nghost}).toTuple();
-            Force = output->elements()[2].toTensor().to(torch::kCPU);
-            Ei = output->elements()[1].toTensor().to(torch::kCPU);
-            if (ff_idx == 0) {
-                Etot = output->elements()[0].toTensor().to(torch::kCPU);
-                Virial = output->elements()[4].toTensor().to(torch::kCPU);            
-            }
+            std::tie(imagetype_map, neighbor_list, dR_neigh) = generate_neighdata();
         } else if (model_name == "NEP") {
-            // std::cout<< "=========do nep forward=========== nghost "<< nghost << std::endl;
-            auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, atom_type_tensor, dR_neigh_tensor, neighbor_type_list_tensor, nghost}).toTuple();
-            Force = output->elements()[2].toTensor().to(torch::kCPU);
-            Ei = output->elements()[1].toTensor().to(torch::kCPU);
-            if (ff_idx == 0) {
-                Etot = output->elements()[0].toTensor().to(torch::kCPU);
-                Virial = output->elements()[4].toTensor().to(torch::kCPU);            
-            }
+            // std::cout<< "==== do nep find neigh ====" << std::endl;
+            std::tie(imagetype_map, neighbor_list, neighbor_type_list, dR_neigh) = generate_neighdata_nep();
+
+            // std::ofstream type_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/imagetype_map.txt");
+            // std::ofstream nl_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/neighbor_list.txt");
+            // std::ofstream nlt_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/neighbor_type_list.txt");
+            // std::ofstream rij_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/dR_neigh.txt");
+
+            // std::cout<< "==========imagetype_map: " << std::endl;
+            // for (const auto& element : imagetype_map) {
+            //     type_txt << element << std::endl;
+            // }
+            // type_txt.close();
+            // for (const auto& element : neighbor_list) {
+            //     nl_txt << element << std::endl;
+            // }
+            // nl_txt.close();
+            // for (const auto& element : neighbor_type_list) {
+            //     nlt_txt << element << std::endl;
+            // }
+            // nlt_txt.close();
+            // for (const auto& element : dR_neigh) {
+            //     rij_txt << element << std::endl;
+            // }
+            // rij_txt.close();
+
+            // for (int i_ =0; i_ <inum; i_++ ) {
+            //     std::cout<< "  " << i_ << "," << imagetype_map[i_] << "  ";
+            // }
+            // std::cout<<std::endl;
+
+            // std::cout<< "neighbor_list: " << std::endl;
+            // for (int i_ =0; i_ <inum; i_++ ) {
+            //     std::cout<< "idx " << i_ << std::endl;
+            //     int index = i_ * model_ntypes * max_neighbor;
+            //     for (int j_ =0; j_ <max_neighbor * model_ntypes; j_++ ) {
+            //         std::cout<< neighbor_list[index + j_ ] << ' ';
+            //     }
+            //     std::cout<<std::endl;
+            // }
+            // std::cout<<std::endl;
+
+            // std::cout<< "neighbor_type_list: " << std::endl;
+            // for (int i_ =0; i_ <inum; i_++ ) {
+            //     std::cout<< "idx " << i_ << std::endl;
+            //     int index = i_ * model_ntypes * max_neighbor;
+            //     for (int j_ =0; j_ <max_neighbor * model_ntypes; j_++ ) {
+            //         std::cout<< neighbor_type_list[index + j_ ] << ' ';
+            //     }
+            //     std::cout<<std::endl;
+            // }
+            // std::cout<<std::endl;
+
+            // std::cout<< "dR_neigh: " << std::endl;
+            // for (int i_ =0; i_ <inum; i_++ ) {
+            //     std::cout<< "idx " << i_ << std::endl;
+            //     int index = i_ * model_ntypes * max_neighbor * 4;
+            //     for (int j_ =0; j_ <max_neighbor * model_ntypes * 4; j_++ ) {
+            //         std::cout<< dR_neigh[index + j_ ] << ' ';
+            //     }
+            //     std::cout<<std::endl;
+            // }
         }
-        auto F_ptr = Force.accessor<double, 3>();
-        auto Ei_ptr = Ei.accessor<double, 2>();
-
-        if (num_ff > 1 && (current_timestep % out_freq == 0)) {
-            for (int i = 0; i < inum + nghost; i++)
-            {
-                // f_n[ff_idx][i][0] = Force[0][i][0].item<double>();
-                // f_n[ff_idx][i][1] = Force[0][i][1].item<double>();
-                // f_n[ff_idx][i][2] = Force[0][i][2].item<double>();
-                f_n[ff_idx][i][0] = F_ptr[0][i][0];
-                f_n[ff_idx][i][1] = F_ptr[0][i][1];
-                f_n[ff_idx][i][2] = F_ptr[0][i][2];
-            }
-            for (int ii = 0; ii < inum; ii++) {
-                // e_atom_n[ff_idx][ii] = Ei[0][ii].item<double>();
-                e_atom_n[ff_idx][ii] = Ei_ptr[0][ii];
-            }
+        if (inum == 0) return;
+        // auto t5 = std::chrono::high_resolution_clock::now();
+        auto int_tensor_options = torch::TensorOptions().dtype(torch::kInt);
+        auto float_tensor_options = torch::TensorOptions().dtype(torch::kFloat64);
+        torch::Tensor imagetype_map_tensor = torch::from_blob(imagetype_map.data(), {inum}, int_tensor_options).to(device);
+        torch::Tensor neighbor_list_tensor = torch::from_blob(neighbor_list.data(), {1, inum, max_neighbor * model_ntypes}, int_tensor_options).to(device);
+        torch::Tensor dR_neigh_tensor = torch::from_blob(dR_neigh.data(), {1, inum, max_neighbor * model_ntypes, 4}, float_tensor_options).to(device,dtype);
+        torch::Tensor atom_type_tensor = torch::from_blob(atom_types.data(), {ntypes}, int_tensor_options).to(device);
+            
+        torch::Tensor neighbor_type_list_tensor;
+        if (model_name == "NEP") {
+            // std::cout<< "=========do neighbor_type_list to tensor ==========="<<std::endl;
+            neighbor_type_list_tensor = torch::from_blob(neighbor_type_list.data(), {1, inum, max_neighbor * model_ntypes}, int_tensor_options).to(device);
         }
+        // auto t6 = std::chrono::high_resolution_clock::now();
+        /*
+        do forward for 4 models
+        only 1 is used for MD
+        1, 2, 3, 4 all for the deviation
+        */
 
-        if (ff_idx == 0) {
-            // Etot = output->elements()[0].toTensor().to(torch::kCPU);
-            // Virial = output->elements()[4].toTensor().to(torch::kCPU);
-            // if (output->elements()[4].isTensor()) {
-            //     calc_virial_from_mlff = true;
-            //     torch::Tensor Virial = output->elements()[4].toTensor().to(torch::kCPU);
-            // } else
-            //     auto Virial = output->elements()[4];
-            // get force
-
-            // auto F_ptr = Force.accessor<double, 3>();
-            // auto Ei_ptr = Ei.accessor<double, 2>();
-            auto V_ptr = Virial.accessor<double, 2>();
-
-            for (int i = 0; i < inum + nghost; i++)
-            {
-                f[i][0] = F_ptr[0][i][0];
-                f[i][1] = F_ptr[0][i][1];
-                f[i][2] = F_ptr[0][i][2];
-            }
-
-            virial[0] = V_ptr[0][0];    // xx
-            virial[1] = V_ptr[0][4];    // yy
-            virial[2] = V_ptr[0][8];    // zz
-            virial[3] = V_ptr[0][1];    // xy
-            virial[4] = V_ptr[0][2];    // xz
-            virial[5] = V_ptr[0][5];    // yz
-
-            // get energy
-            if (eflag) eng_vdwl = Etot[0][0].item<double>();
-
-            if (eflag_atom)
-            {
-                for (int ii = 0; ii < inum; ii++) {
-                    eatom[ii] = Ei_ptr[0][ii];
+        for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
+            if (ff_idx > 0 && (current_timestep % out_freq != 0)) continue;
+            torch::Tensor Force;
+            torch::Tensor Ei;
+            torch::Tensor Etot;
+            torch::Tensor Virial;
+            if (model_name == "DP") {
+                auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, atom_type_tensor, dR_neigh_tensor, nghost}).toTuple();
+                Force = output->elements()[2].toTensor().to(torch::kCPU);
+                Ei = output->elements()[1].toTensor().to(torch::kCPU);
+                if (ff_idx == 0) {
+                    Etot = output->elements()[0].toTensor().to(torch::kCPU);
+                    Virial = output->elements()[4].toTensor().to(torch::kCPU);            
+                }
+            } else if (model_name == "NEP") {
+                // std::cout<< "=========do nep forward=========== nghost "<< nghost << std::endl;
+                auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, atom_type_tensor, dR_neigh_tensor, neighbor_type_list_tensor, nghost}).toTuple();
+                Force = output->elements()[2].toTensor().to(torch::kCPU);
+                Ei = output->elements()[1].toTensor().to(torch::kCPU);
+                if (ff_idx == 0) {
+                    Etot = output->elements()[0].toTensor().to(torch::kCPU);
+                    Virial = output->elements()[4].toTensor().to(torch::kCPU);            
                 }
             }
-            // If virial needed calculate via F dot r.
-            // if (vflag_fdotr) virial_fdotr_compute();
-        }
+            auto F_ptr = Force.accessor<double, 3>();
+            auto Ei_ptr = Ei.accessor<double, 2>();
 
-    }
-    // auto t7 = std::chrono::high_resolution_clock::now();
-    /*
-      exploration mode.
-      calculate the error of the force
-  */
+            if (num_ff > 1 && (current_timestep % out_freq == 0)) {
+                for (int i = 0; i < inum + nghost; i++)
+                {
+                    // f_n[ff_idx][i][0] = Force[0][i][0].item<double>();
+                    // f_n[ff_idx][i][1] = Force[0][i][1].item<double>();
+                    // f_n[ff_idx][i][2] = Force[0][i][2].item<double>();
+                    f_n[ff_idx][i][0] = F_ptr[0][i][0];
+                    f_n[ff_idx][i][1] = F_ptr[0][i][1];
+                    f_n[ff_idx][i][2] = F_ptr[0][i][2];
+                }
+                for (int ii = 0; ii < inum; ii++) {
+                    // e_atom_n[ff_idx][ii] = Ei[0][ii].item<double>();
+                    e_atom_n[ff_idx][ii] = Ei_ptr[0][ii];
+                }
+            }
+
+            if (ff_idx == 0) {
+                // Etot = output->elements()[0].toTensor().to(torch::kCPU);
+                // Virial = output->elements()[4].toTensor().to(torch::kCPU);
+                // if (output->elements()[4].isTensor()) {
+                //     calc_virial_from_mlff = true;
+                //     torch::Tensor Virial = output->elements()[4].toTensor().to(torch::kCPU);
+                // } else
+                //     auto Virial = output->elements()[4];
+                // get force
+
+                // auto F_ptr = Force.accessor<double, 3>();
+                // auto Ei_ptr = Ei.accessor<double, 2>();
+                auto V_ptr = Virial.accessor<double, 2>();
+
+                for (int i = 0; i < inum + nghost; i++)
+                {
+                    f[i][0] = F_ptr[0][i][0];
+                    f[i][1] = F_ptr[0][i][1];
+                    f[i][2] = F_ptr[0][i][2];
+                }
+
+                virial[0] = V_ptr[0][0];    // xx
+                virial[1] = V_ptr[0][4];    // yy
+                virial[2] = V_ptr[0][8];    // zz
+                virial[3] = V_ptr[0][1];    // xy
+                virial[4] = V_ptr[0][2];    // xz
+                virial[5] = V_ptr[0][5];    // yz
+
+                // get energy
+                if (eflag) eng_vdwl = Etot[0][0].item<double>();
+
+                if (eflag_atom)
+                {
+                    for (int ii = 0; ii < inum; ii++) {
+                        eatom[ii] = Ei_ptr[0][ii];
+                    }
+                }
+                // If virial needed calculate via F dot r.
+                // if (vflag_fdotr) virial_fdotr_compute();
+            }
+        }
+    } // if model_type == 0
+    else if (model_type == 1) {
+        double total_potential = 0.0;
+        double total_virial[6] = {0.0};
+        double* per_atom_potential = nullptr;
+        double** per_atom_virial = nullptr;
+        if (cvflag_atom) {
+            per_atom_virial = cvatom;
+        }
+        if (eflag_atom) {
+            per_atom_potential = eatom;
+        }
+        for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
+            if ((num_ff == 1) or (current_timestep % out_freq != 0)) {
+                nep_models[ff_idx].compute_for_lammps(
+                atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh,atom->type, atom->x,
+                total_potential, total_virial, per_atom_potential, atom->f, per_atom_virial, ff_idx);
+                if (eflag) {
+                    eng_vdwl += total_potential;
+                }
+                if (vflag) {
+                    for (int component = 0; component < 6; ++component) {
+                    virial[component] += total_virial[component];
+                    }
+                }
+            } else {
+                total_potential = 0.0;
+                total_virial[6] = {0.0};
+                // for multi models, the output step, should calculate deviation
+                // 这里可以优化，快速置零
+                for (int i = 0; i < list->inum + nghost; i++) {
+                    f_n[ff_idx][i][0] = 0;
+                    f_n[ff_idx][i][1] = 0;
+                    f_n[ff_idx][i][2] = 0;
+                    e_atom_n[ff_idx][i] = 0;
+                }
+                nep_models[ff_idx].compute_for_lammps(
+                    atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh,atom->type, atom->x,
+                    total_potential, total_virial, e_atom_n[ff_idx], f_n[ff_idx], per_atom_virial, ff_idx);
+                if (ff_idx == 0) {
+                    for (int i = 0; i < list->inum + nghost; i++) {
+                        atom->f[i][0] = f_n[0][i][0];
+                        atom->f[i][1] = f_n[0][i][1];
+                        atom->f[i][2] = f_n[0][i][2];
+                    }
+                    if (eflag_atom) {
+                        for (int i = 0; i < list->inum + nghost; i++) {
+                           per_atom_potential[i] = e_atom_n[0][i];
+                        }
+                    }
+                    if (eflag) {
+                        eng_vdwl += total_potential;
+                    }
+                    if (vflag) {
+                        for (int component = 0; component < 6; ++component) {
+                            virial[component] += total_virial[component];
+                        }
+                    }    
+                }
+            } // else multi models out steps
+        }   // for ff_idx      
+    } // model_type == 1: nep_cpu version
+    //   exploration mode.
+    //   calculate the error of the force
+    
     if (num_ff > 1 && (current_timestep % out_freq == 0)) {
         // calculate model deviation with Force
         std::pair<double, double> result = calc_max_error(f_n, e_atom_n);

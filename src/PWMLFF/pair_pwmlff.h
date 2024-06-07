@@ -12,7 +12,7 @@ PairStyle(pwmlff, PairPWMLFF);
 
 #ifndef LMP_PAIR_MLFF_H
 #define LMP_PAIR_MLFF_H
-
+#include "nep.h"
 #include "pair.h"
 #include <iostream>
 #include <torch/script.h>
@@ -51,7 +51,10 @@ namespace LAMMPS_NS {
             int p_ff_idx;
             unsigned seed;
 
-            torch::jit::script::Module module;
+            NEP3 nep_model;
+            std::vector<NEP3> nep_models;
+
+            torch::jit::script::Module module;//dp and nep jit model
             std::vector<torch::jit::script::Module> modules;
 
             std::vector<double> max_err_list;
@@ -65,6 +68,7 @@ namespace LAMMPS_NS {
             std::vector<int> atom_types;
             std::vector<int> model_atom_type_idx;
             int model_ntypes;
+            int model_type; // 0 for jitmodel(dp or nep) 1 for nep
             // DP params
             double cutoff;
             // NEP params
