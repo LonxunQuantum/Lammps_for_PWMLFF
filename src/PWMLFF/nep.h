@@ -1,8 +1,6 @@
 /*
-
-  this code from https://github.com/brucefan1983/NEP_CPU
-  
-  the licnese of NEP_CPU is as follows:
+    this code from https://github.com/brucefan1983/NEP_CPU
+    the licnese of NEP_CPU is as follows:
     Copyright 2022 Zheyong Fan, Junjie Wang, Eric Lindgren
     This file is part of NEP_CPU.
     NEP_CPU is free software: you can redistribute it and/or modify
@@ -192,6 +190,10 @@ public:
   std::vector<double> parameters;
   std::vector<std::string> element_list;
   std::vector<int> element_atomic_number_list;
+
+  std::vector<int> map_atom_types;     //pair_coeff       * * 72 8
+  std::vector<int> map_atom_type_idx; // the nep.txt order is [8, 72], so the idx is [1, 0]
+            
   void update_potential(double* parameters, ANN& ann);
   void allocate_memory(const int N);
 

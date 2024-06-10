@@ -65,8 +65,8 @@ namespace LAMMPS_NS {
 
             torch::Device device = torch::kCPU;
             torch::Dtype dtype = torch::kFloat32;
-            std::vector<int> atom_types;
-            std::vector<int> model_atom_type_idx;
+            std::vector<int> atom_types;           // use for jit models
+            std::vector<int> model_atom_type_idx;  // use for jit models 
             int model_ntypes;
             int model_type; // 0 for jitmodel(dp or nep) 1 for nep
             // DP params

@@ -237,15 +237,20 @@ void PairPWMLFF::coeff(int narg, char** arg)
             if (iter != atom_type_module.end() || arg[ii] == 0)
             {
                 int index = std::distance(atom_type_module.begin(), iter);
-                model_atom_type_idx.push_back(index);
+                model_atom_type_idx.push_back(index); 
                 atom_types.push_back(temp);
+                for(int jj=0; jj < num_ff; ++jj){
+                    nep_models[jj].map_atom_types.push_back(temp);
+                    nep_models[jj].map_atom_type_idx.push_back(index);
+                }
                 // std::cout<<"=== the config atom type "<< temp << " index in ff is "  << index << std::endl;
             }
             else
             {
                 error->all(FLERR, "This element is not included in the machine learning force field");
             }
-        }        
+        }
+                 
     }
    if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
 
@@ -594,96 +599,36 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<dou
 void PairPWMLFF::compute(int eflag, int vflag)
 {
     if (eflag || vflag) ev_setup(eflag, vflag);
-    double **x = atom->x;
-    double **f = atom->f;
-    int *type = atom->type;
+
     // int newton_pair = force->newton_pair;
-    double *virial = force->pair->virial;
     int ff_idx;
     // int nlocal = atom->nlocal;
     int current_timestep = update->ntimestep;
     // int total_timestep = update->laststep;
-    int ntypes = atom->ntypes;
-    int nghost = atom->nghost;
     // int n_all = nlocal + nghost;
     bool calc_virial_from_mlff = false;
     bool calc_egroup_from_mlff = false;
-
-    int inum, jnum, itype, jtype;
+    int ntypes = atom->ntypes;
+    int nghost = atom->nghost;
+    // int inum, jnum, itype, jtype;
     double max_err, global_max_err, max_err_ei, global_max_err_ei;    
-    inum = list->inum;
-
+    // for dp and nep model from jitscript
     if (model_type == 0) {
+
+        int inum = list->inum;
+        double *virial = force->pair->virial;
+        double **x = atom->x;
+        double **f = atom->f;
+        int *type = atom->type;
         // auto t4 = std::chrono::high_resolution_clock::now();
         std::vector<int> imagetype_map, neighbor_list, neighbor_type_list;
         std::vector<double> dR_neigh;
-
 
         if (model_name == "DP") {
             std::tie(imagetype_map, neighbor_list, dR_neigh) = generate_neighdata();
         } else if (model_name == "NEP") {
             // std::cout<< "==== do nep find neigh ====" << std::endl;
             std::tie(imagetype_map, neighbor_list, neighbor_type_list, dR_neigh) = generate_neighdata_nep();
-
-            // std::ofstream type_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/imagetype_map.txt");
-            // std::ofstream nl_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/neighbor_list.txt");
-            // std::ofstream nlt_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/neighbor_type_list.txt");
-            // std::ofstream rij_txt("/data/home/wuxingxing/datas/lammps_test/nep_hfo2_lmps/dR_neigh.txt");
-
-            // std::cout<< "==========imagetype_map: " << std::endl;
-            // for (const auto& element : imagetype_map) {
-            //     type_txt << element << std::endl;
-            // }
-            // type_txt.close();
-            // for (const auto& element : neighbor_list) {
-            //     nl_txt << element << std::endl;
-            // }
-            // nl_txt.close();
-            // for (const auto& element : neighbor_type_list) {
-            //     nlt_txt << element << std::endl;
-            // }
-            // nlt_txt.close();
-            // for (const auto& element : dR_neigh) {
-            //     rij_txt << element << std::endl;
-            // }
-            // rij_txt.close();
-
-            // for (int i_ =0; i_ <inum; i_++ ) {
-            //     std::cout<< "  " << i_ << "," << imagetype_map[i_] << "  ";
-            // }
-            // std::cout<<std::endl;
-
-            // std::cout<< "neighbor_list: " << std::endl;
-            // for (int i_ =0; i_ <inum; i_++ ) {
-            //     std::cout<< "idx " << i_ << std::endl;
-            //     int index = i_ * model_ntypes * max_neighbor;
-            //     for (int j_ =0; j_ <max_neighbor * model_ntypes; j_++ ) {
-            //         std::cout<< neighbor_list[index + j_ ] << ' ';
-            //     }
-            //     std::cout<<std::endl;
-            // }
-            // std::cout<<std::endl;
-
-            // std::cout<< "neighbor_type_list: " << std::endl;
-            // for (int i_ =0; i_ <inum; i_++ ) {
-            //     std::cout<< "idx " << i_ << std::endl;
-            //     int index = i_ * model_ntypes * max_neighbor;
-            //     for (int j_ =0; j_ <max_neighbor * model_ntypes; j_++ ) {
-            //         std::cout<< neighbor_type_list[index + j_ ] << ' ';
-            //     }
-            //     std::cout<<std::endl;
-            // }
-            // std::cout<<std::endl;
-
-            // std::cout<< "dR_neigh: " << std::endl;
-            // for (int i_ =0; i_ <inum; i_++ ) {
-            //     std::cout<< "idx " << i_ << std::endl;
-            //     int index = i_ * model_ntypes * max_neighbor * 4;
-            //     for (int j_ =0; j_ <max_neighbor * model_ntypes * 4; j_++ ) {
-            //         std::cout<< dR_neigh[index + j_ ] << ' ';
-            //     }
-            //     std::cout<<std::endl;
-            // }
         }
         if (inum == 0) return;
         // auto t5 = std::chrono::high_resolution_clock::now();
@@ -804,8 +749,10 @@ void PairPWMLFF::compute(int eflag, int vflag)
         }
         for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
             if ((num_ff == 1) or (current_timestep % out_freq != 0)) {
+                // can not set the atom->type (the type set in config) to nep forcefild order, because the ghost atoms type same as the conifg
+                // The atomic types corresponding to the index of neighbors are constantly changing
                 nep_models[ff_idx].compute_for_lammps(
-                atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh,atom->type, atom->x,
+                atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh, atom->type, atom->x,
                 total_potential, total_virial, per_atom_potential, atom->f, per_atom_virial, ff_idx);
                 if (eflag) {
                     eng_vdwl += total_potential;

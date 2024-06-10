@@ -1600,6 +1600,7 @@ void find_descriptor_for_lammps(
   int* g_NN,
   int** g_NL,
   int* g_type,
+  std::vector<int> map_atom_type_idx,
   double** g_pos,
 #ifdef USE_TABLE_FOR_RADIAL_FUNCTIONS
   const double* g_gn_radial,
@@ -1612,7 +1613,7 @@ void find_descriptor_for_lammps(
 {
   for (int ii = 0; ii < N; ++ii) {
     int n1 = g_ilist[ii];
-    int t1 = g_type[n1] - 1; // from LAMMPS to NEP convention
+    int t1 = map_atom_type_idx[g_type[n1] - 1];
     double q[MAX_DIM] = {0.0};
 
     for (int i1 = 0; i1 < g_NN[n1]; ++i1) {
@@ -1625,7 +1626,7 @@ void find_descriptor_for_lammps(
         continue;
       }
       double d12 = sqrt(d12sq);
-      int t2 = g_type[n2] - 1; // from LAMMPS to NEP convention
+      int t2 = map_atom_type_idx[g_type[n2] - 1]; // from LAMMPS to NEP convention
 
 #ifdef USE_TABLE_FOR_RADIAL_FUNCTIONS
       int index_left, index_right;
@@ -1679,7 +1680,7 @@ void find_descriptor_for_lammps(
           continue;
         }
         double d12 = sqrt(d12sq);
-        int t2 = g_type[n2] - 1; // from LAMMPS to NEP convention
+        int t2 = map_atom_type_idx[g_type[n2] - 1]; // from LAMMPS to NEP convention
 
 #ifdef USE_TABLE_FOR_RADIAL_FUNCTIONS
         int index_left, index_right;
@@ -1760,6 +1761,7 @@ void find_force_radial_for_lammps(
   int* g_NN,
   int** g_NL,
   int* g_type,
+  std::vector<int> map_atom_type_idx,
   double** g_pos,
   double* g_Fp,
 #ifdef USE_TABLE_FOR_RADIAL_FUNCTIONS
@@ -1772,10 +1774,10 @@ void find_force_radial_for_lammps(
 {
   for (int ii = 0; ii < N; ++ii) {
     int n1 = g_ilist[ii];
-    int t1 = g_type[n1] - 1; // from LAMMPS to NEP convention
+    int t1 = map_atom_type_idx[g_type[n1] - 1]; // from LAMMPS to NEP convention
     for (int i1 = 0; i1 < g_NN[n1]; ++i1) {
       int n2 = g_NL[n1][i1];
-      int t2 = g_type[n2] - 1; // from LAMMPS to NEP convention
+      int t2 = map_atom_type_idx[g_type[n2] - 1]; // from LAMMPS to NEP convention
       double r12[3] = {
         g_pos[n2][0] - g_pos[n1][0], g_pos[n2][1] - g_pos[n1][1], g_pos[n2][2] - g_pos[n1][2]};
 
@@ -1875,6 +1877,7 @@ void find_force_angular_for_lammps(
   int* g_NN,
   int** g_NL,
   int* g_type,
+  std::vector<int> map_atom_type_idx,
   double** g_pos,
   double* g_Fp,
   double* g_sum_fxyz,
@@ -1897,7 +1900,7 @@ void find_force_angular_for_lammps(
       sum_fxyz[d] = g_sum_fxyz[d * nlocal + n1];
     }
 
-    int t1 = g_type[n1] - 1; // from LAMMPS to NEP convention
+    int t1 = map_atom_type_idx[g_type[n1] - 1]; // from LAMMPS to NEP convention
 
     for (int i1 = 0; i1 < g_NN[n1]; ++i1) {
       int n2 = g_NL[n1][i1];
@@ -1909,7 +1912,7 @@ void find_force_angular_for_lammps(
         continue;
       }
       double d12 = sqrt(d12sq);
-      int t2 = g_type[n2] - 1; // from LAMMPS to NEP convention
+      int t2 = map_atom_type_idx[g_type[n2] - 1]; // from LAMMPS to NEP convention
       double f12[3] = {0.0};
 
 #ifdef USE_TABLE_FOR_RADIAL_FUNCTIONS
@@ -2016,6 +2019,7 @@ void find_force_ZBL_for_lammps(
   int* g_NN,
   int** g_NL,
   int* g_type,
+  std::vector<int> map_atom_type_idx,
   double** g_pos,
   double** g_force,
   double g_total_virial[6],
@@ -2025,7 +2029,7 @@ void find_force_ZBL_for_lammps(
 {
   for (int ii = 0; ii < N; ++ii) {
     int n1 = g_ilist[ii];
-    int type1 = g_type[n1] - 1;
+    int type1 = map_atom_type_idx[g_type[n1] - 1];
     double zi = zbl.atomic_numbers[type1]; // from LAMMPS to NEP convention
     double pow_zi = pow(zi, 0.23);
     for (int i1 = 0; i1 < g_NN[n1]; ++i1) {
@@ -2042,7 +2046,7 @@ void find_force_ZBL_for_lammps(
 
       double d12inv = 1.0 / d12;
       double f, fp;
-      int type2 = g_type[n2] - 1;
+      int type2 = map_atom_type_idx[g_type[n2] - 1];
       double zj = zbl.atomic_numbers[type2]; // from LAMMPS to NEP convention
       double a_inv = (pow_zi + pow(zj, 0.23)) * 2.134563;
       double zizj = K_C_SP * zi * zj;
@@ -3283,26 +3287,26 @@ void NEP3::compute_for_lammps(
     num_atoms = nlocal;
   }
   find_descriptor_for_lammps(
-    paramb, annmb, nlocal, N, ilist, NN, NL, type, pos,
+    paramb, annmb, nlocal, N, ilist, NN, NL, type, map_atom_type_idx, pos,
 #ifdef USE_TABLE_FOR_RADIAL_FUNCTIONS
     gn_radial.data(), gn_angular.data(),
 #endif
     Fp.data(), sum_fxyz.data(), total_potential, potential);
   find_force_radial_for_lammps(
-    paramb, annmb, nlocal, N, ilist, NN, NL, type, pos, Fp.data(),
+    paramb, annmb, nlocal, N, ilist, NN, NL, type, map_atom_type_idx, pos, Fp.data(),
 #ifdef USE_TABLE_FOR_RADIAL_FUNCTIONS
     gnp_radial.data(),
 #endif
     force, total_virial, virial, model_index);
   find_force_angular_for_lammps(
-    paramb, annmb, nlocal, N, ilist, NN, NL, type, pos, Fp.data(), sum_fxyz.data(),
+    paramb, annmb, nlocal, N, ilist, NN, NL, type, map_atom_type_idx, pos, Fp.data(), sum_fxyz.data(),
 #ifdef USE_TABLE_FOR_RADIAL_FUNCTIONS
     gn_angular.data(), gnp_angular.data(),
 #endif
     force, total_virial, virial);
   if (zbl.enabled) {
     find_force_ZBL_for_lammps(
-      zbl, N, ilist, NN, NL, type, pos, force, total_virial, virial, total_potential, potential);
+      zbl, N, ilist, NN, NL, type, map_atom_type_idx,  pos, force, total_virial, virial, total_potential, potential);
   }
 }
 
