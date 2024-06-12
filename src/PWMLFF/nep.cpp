@@ -1,8 +1,8 @@
 /*
 
-  this code from https://github.com/brucefan1983/NEP_CPU
-  
-  the licnese of NEP_CPU is as follows:
+this code from https://github.com/brucefan1983/NEP_CPU
+
+the licnese of NEP_CPU is as follows:
     Copyright 2022 Zheyong Fan, Junjie Wang, Eric Lindgren
     This file is part of NEP_CPU.
     NEP_CPU is free software: you can redistribute it and/or modify
@@ -20,14 +20,19 @@ List of modified records by Wu Xingxing (email stars_sparkling@163.com)
 1. Added network structure support for NEP4 model independent bias
     Modified force field reading;
     Modified the applyann_one_layer method;
-2. In order to adapt to multiple model biases, the function has been added with computefor_lamps() and the int model_index parameter has been added  
+2. Added handling of inconsistency between the atomic order of the input structure of LAMMPS and the atomic order in the force field
+3. In order to adapt to multiple model biases, the function has been added with computefor_lamps() and the int model_index parameter has been added  
 */
 
 /*----------------------------------------------------------------------------80
-A CPU implementation of the neuroevolution potential (NEP)
-Ref: Zheyong Fan et al., Neuroevolution machine learning potentials:
+For more information on NEP4, refer to
+Zheyong Fan et al., Neuroevolution machine learning potentials:
 Combining high accuracy and low cost in atomistic simulations and application to
 heat transport, Phys. Rev. B. 104, 104309 (2021).
+
+We have made the following improvements based on NEP4
+http://doc.lonxun.com/PWMLFF/models/nep/NEP%20model/
+
 ------------------------------------------------------------------------------*/
 
 #include "nep.h"
@@ -1734,6 +1739,7 @@ void find_descriptor_for_lammps(
 
     for (int d = 0; d < annmb.dim; ++d) {
       q[d] = q[d] * paramb.q_scaler[d];
+      // std::cout << "scaler " << paramb.q_scaler[d] << " realq " <<  q[d] << std::endl;
     }
 
     double F = 0.0, Fp[MAX_DIM] = {0.0}, latent_space[MAX_NEURON] = {0.0};
@@ -1745,7 +1751,7 @@ void find_descriptor_for_lammps(
     if (g_potential) {      // only calculate when required
       g_potential[n1] += F;
     }
-
+    // std::cout << "g potential n1 " << n1 << " force " << F << std::endl;
     for (int d = 0; d < annmb.dim; ++d) {
       g_Fp[d * nlocal + n1] = Fp[d] * paramb.q_scaler[d];
     }

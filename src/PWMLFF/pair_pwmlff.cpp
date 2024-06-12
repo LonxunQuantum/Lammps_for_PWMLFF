@@ -6,7 +6,7 @@
 #include <cstring>
 #include <fstream>
 #include "pair_pwmlff.h"
-
+#include "nep.h"
 #include "atom.h"
 #include "comm.h"
 #include "error.h"
@@ -178,7 +178,7 @@ void PairPWMLFF::settings(int narg, char** arg)
     // but not in allocate()
     memory->create(f_n, num_ff, atom->nmax, 3, "pair_pwmlff:f_n");
     memory->create(e_atom_n, num_ff, atom->natoms, "pair_pwmlff:e_atom_n");
-}
+} 
 
 /* ----------------------------------------------------------------------
    set coeffs for one or more type pairs pair_coeff 
@@ -315,6 +315,7 @@ std::pair<double, double> PairPWMLFF::calc_max_error(double ***f_n, double **e_a
             f_ave[i * 3 + 1] += f_n[ff_idx][i][1];
             f_ave[i * 3 + 2] += f_n[ff_idx][i][2];
             ei_ave[i] += e_atom_n[ff_idx][i];
+            // std::cout<< "ff " << ff_idx << " i " << i << " ei " <<  e_atom_n[ff_idx][i] << " force " << f_n[ff_idx][i][0] << " "  << f_n[ff_idx][i][1] << " "  << f_n[ff_idx][i][2] << std::endl;
         }
     }
 
@@ -749,12 +750,12 @@ void PairPWMLFF::compute(int eflag, int vflag)
         }
         for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
             if ((num_ff == 1) or (current_timestep % out_freq != 0)) {
-                // can not set the atom->type (the type set in config) to nep forcefild order, because the ghost atoms type same as the conifg
+                                // can not set the atom->type (the type set in config) to nep forcefild order, because the ghost atoms type same as the conifg
                 // The atomic types corresponding to the index of neighbors are constantly changing
                 nep_models[ff_idx].compute_for_lammps(
                 atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh, atom->type, atom->x,
                 total_potential, total_virial, per_atom_potential, atom->f, per_atom_virial, ff_idx);
-                if (eflag) {
+                                if (eflag) {
                     eng_vdwl += total_potential;
                 }
                 if (vflag) {
@@ -773,7 +774,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
                     f_n[ff_idx][i][2] = 0;
                     e_atom_n[ff_idx][i] = 0;
                 }
-                nep_models[ff_idx].compute_for_lammps(
+                                nep_models[ff_idx].compute_for_lammps(
                     atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh,atom->type, atom->x,
                     total_potential, total_virial, e_atom_n[ff_idx], f_n[ff_idx], per_atom_virial, ff_idx);
                 if (ff_idx == 0) {
