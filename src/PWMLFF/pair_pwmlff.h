@@ -12,15 +12,13 @@ PairStyle(pwmlff, PairPWMLFF);
 
 #ifndef LMP_PAIR_MLFF_H
 #define LMP_PAIR_MLFF_H
-#include "nep.h"
+#include "nep_cpu.h"
+#include "PWMLFF/NEP_GPU/force/nep3.cuh"
 #include "pair.h"
 #include <iostream>
 #include <torch/script.h>
 #include <torch/torch.h>
-
-
 namespace LAMMPS_NS {
-
     class PairPWMLFF : public Pair {
         public:
             PairPWMLFF(class LAMMPS *);
@@ -32,6 +30,7 @@ namespace LAMMPS_NS {
 
             std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> generate_neighdata();
             std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<double>> generate_neighdata_nep();
+            std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>, std::vector<float>> generate_neighdata_nep_gpu();
             void compute(int, int) override;
             void settings(int, char **) override;
             void coeff(int, char **) override;
@@ -51,8 +50,12 @@ namespace LAMMPS_NS {
             int p_ff_idx;
             unsigned seed;
 
-            NEP3 nep_model;
-            std::vector<NEP3> nep_models;
+            bool use_nep_gpu;
+            
+            NEP3 nep_gpu_model;
+
+            NEP3_CPU nep_cpu_model;
+            std::vector<NEP3_CPU> nep_cpu_models;
 
             torch::jit::script::Module module;//dp and nep jit model
             std::vector<torch::jit::script::Module> modules;
@@ -68,7 +71,7 @@ namespace LAMMPS_NS {
             std::vector<int> atom_types;           // use for jit models
             std::vector<int> model_atom_type_idx;  // use for jit models 
             int model_ntypes;
-            int model_type; // 0 for jitmodel(dp or nep) 1 for nep
+            int model_type; // 0 for jitmodel(dp or nep) 1 for nep_cpu 2 for nep_gpu
             // DP params
             double cutoff;
             // NEP params
@@ -76,16 +79,17 @@ namespace LAMMPS_NS {
             double cutoff_angular;
             //common params
             int max_neighbor;
+            int nep_gpu_nm = 2000; //maxneighbor of nep_gpu, fixed
             std::string model_name;
 
             // std::vector<int> imagetype, imagetype_map, neighbor_list;
-            std::vector<int> imagetype_map, neighbor_list;
-            std::vector<int> neighbor_type_list; // for nep find neigh and forward
-            std::vector<double> dR_neigh;
             // std::vector<int> use_type;
-
+            std::vector<int> imagetype_map; // for nep with jit
+            std::vector<int> itype_convert_map, neighbor_list, neigbor_num_list, neighbor_angular_list, neigbor_angular_num_list; // for nep gpu, the raidal also for nep jit
+            std::vector<int> neighbor_type_list; // for nep find neigh and forward
+            std::vector<double> dR_neigh;   // for dp with jit, nep with jit
+            std::vector<float> rij_nep_gpu; // for nep gpu
     };
-
 }
 #endif
 #endif

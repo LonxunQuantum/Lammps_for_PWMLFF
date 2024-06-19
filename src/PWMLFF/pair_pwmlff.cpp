@@ -6,7 +6,7 @@
 #include <cstring>
 #include <fstream>
 #include "pair_pwmlff.h"
-#include "nep.h"
+#include "nep_cpu.h"
 #include "atom.h"
 #include "comm.h"
 #include "error.h"
@@ -18,7 +18,7 @@
 #include "neighbor.h"
 #include "update.h"
 #include "domain.h"
-
+#include <dlfcn.h>
 
 using namespace LAMMPS_NS;
 
@@ -104,6 +104,10 @@ void PairPWMLFF::settings(int narg, char** arg)
     torch::DeviceType device_type = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
     device = device_type == torch::kCUDA ?  torch::Device(device_type, rank % num_devices) : torch::Device(device_type);
     dtype = torch::kFloat64;
+
+    std::cout<<"the numbor of gpu is " <<  num_devices << std::endl;
+    std::cout<<"the mpi process is " << comm->nprocs << std::endl;
+    
     if (me == 0) utils::logmesg(this -> lmp, "<---- Loading model ---->");
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         std::string model_file = models[ff_idx];
@@ -122,10 +126,32 @@ void PairPWMLFF::settings(int narg, char** arg)
             // load txt format model file, it should be nep
             try {
                 bool is_rank_0 = (comm->me == 0);
-                nep_model.init_from_file(model_file, is_rank_0);
-                nep_models.push_back(nep_model);
+                void* handle = dlopen("libnep_gpu.so", RTLD_LAZY);
+                if (!handle) {
+                std::cout << "Could not find libnep_gpu.so " << dlerror() << " The nep cpu version will be used for lammps! " << std::endl;
+                use_nep_gpu = false;
+                } else if (num_devices < 1) {
+                    std::cout << "Can not find the GPU devices. The nep cpu version will be used for lammps! " << std::endl;
+                    use_nep_gpu = false;
+                    dlclose(handle);
+                }
+                else {
+                    std::cout << "Load libnep_gpu.so success. The number of GPUs " << num_devices << " will be used !"<< std::endl;
+                    use_nep_gpu = true;
+                    dlclose(handle);
+                }
+                // if the gpu nums > 0 and libnep.so is exsits, use gpu model
+                if (use_nep_gpu) {
+                    nep_gpu_model.init_from_file(model_file.c_str(), nmax);
+                    model_type = 2;
+                    std::cout<<"load nep.txt success and the model type is 2" << std::endl;
+                } else {
+                    nep_cpu_model.init_from_file(model_file, is_rank_0);
+                    nep_cpu_models.push_back(nep_cpu_model);
+                    model_type = 1;
+                }
                 if (me == 0) printf("\nLoading txt model file:   %s\n", model_file.c_str());
-                model_type = 1;
+                
             } catch (const c10::Error e) {
                 std::cerr << "Failed to load model :" << e.msg() << std::endl;
             }
@@ -172,7 +198,9 @@ void PairPWMLFF::settings(int narg, char** arg)
         printf("\nmax_neighbor: %5d\n", max_neighbor);
         }
     } else if (model_type == 1) {
-        cutoff = nep_model.paramb.rc_radial;
+        cutoff = nep_cpu_model.paramb.rc_radial;
+    } else if (model_type == 2) {
+        cutoff = nep_gpu_model.paramb.rc_radial;
     }
     // since we need num_ff, so well allocate memory here
     // but not in allocate()
@@ -225,7 +253,7 @@ void PairPWMLFF::coeff(int narg, char** arg)
             }
         }
     } else if (model_type == 1) {
-        std::vector<int> atom_type_module = nep_model.element_atomic_number_list;
+        std::vector<int> atom_type_module = nep_cpu_model.element_atomic_number_list;
         model_ntypes = atom_type_module.size();
         if (ntypes > model_ntypes || ntypes != narg - 2)  // type numbers in strucutre file and in pair_coeff should be the same
         {
@@ -240,8 +268,8 @@ void PairPWMLFF::coeff(int narg, char** arg)
                 model_atom_type_idx.push_back(index); 
                 atom_types.push_back(temp);
                 for(int jj=0; jj < num_ff; ++jj){
-                    nep_models[jj].map_atom_types.push_back(temp);
-                    nep_models[jj].map_atom_type_idx.push_back(index);
+                    nep_cpu_models[jj].map_atom_types.push_back(temp);
+                    nep_cpu_models[jj].map_atom_type_idx.push_back(index);
                 }
                 // std::cout<<"=== the config atom type "<< temp << " index in ff is "  << index << std::endl;
             }
@@ -250,10 +278,32 @@ void PairPWMLFF::coeff(int narg, char** arg)
                 error->all(FLERR, "This element is not included in the machine learning force field");
             }
         }
-                 
+    } else if (model_type == 2) { // for nep_gpu
+        // check or reset
+        std::vector<int> atom_type_module = nep_gpu_model.element_atomic_number_list;
+        model_ntypes = atom_type_module.size();
+        if (ntypes > model_ntypes || ntypes != narg - 2)  // type numbers in strucutre file and in pair_coeff should be the same
+        {
+            error->all(FLERR, "Element mapping is not correct, ntypes = " + std::to_string(ntypes));
+        }
+        for (int ii = 2; ii < narg; ++ii) {
+            int temp = std::stoi(arg[ii]);
+            auto iter = std::find(atom_type_module.begin(), atom_type_module.end(), temp);   
+            if (iter != atom_type_module.end() || arg[ii] == 0)
+            {
+                int index = std::distance(atom_type_module.begin(), iter);
+                model_atom_type_idx.push_back(index); 
+                atom_types.push_back(temp);
+                    nep_gpu_model.map_atom_type_idx.push_back(index);
+                // std::cout<<"=== the config atom type "<< temp << " index in ff is "  << index << std::endl;
+            }
+            else
+            {
+                error->all(FLERR, "This element is not included in the machine learning force field");
+            }
+        }        
     }
    if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
-
 }
 
 /* ----------------------------------------------------------------------
@@ -597,20 +647,113 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<dou
     // return std::make_tuple(imagetype, imagetype_map, neighbor_list, dR_neigh);
 }
 
+std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>, std::vector<float>> PairPWMLFF::generate_neighdata_nep_gpu()
+{   
+    int i, j, k, ii, jj, inum, jnum, itype, jtype;
+    double xtmp, ytmp, ztmp, delx, dely, delz, rsq, rij;
+    int *ilist, *jlist, *numneigh, **firstneigh;
+    int etnum;
+
+    double **x = atom->x;
+    int *type = atom->type;
+    int *tag = atom->tag;
+    int nlocal = atom->nlocal;
+    int nghost = atom->nghost;
+    // int ntypes = atom->ntypes;
+    int ntypes = model_ntypes;
+    int n_all = nlocal + nghost;
+    double rc2 = nep_gpu_model.paramb.rc_radial*nep_gpu_model.paramb.rc_radial;
+    double rc_a2 = nep_gpu_model.paramb.rc_angular*nep_gpu_model.paramb.rc_angular;
+    // std::cout << "========= rc2 " << rc2 << " rc_a2 " << rc_a2 << std::endl;
+    double min_dR = 1000;
+    double min_dR_all;
+
+    inum = list->inum;
+    ilist = list->ilist;
+    numneigh = list->numneigh;
+    firstneigh = list->firstneigh;
+    int NM = nep_gpu_nm;
+    int N_NM = inum * NM;
+    // imagetype.resize(inum);
+    neighbor_list.assign(N_NM, 0);
+    neighbor_angular_list.assign(N_NM, 0);
+    itype_convert_map.assign(n_all, -1);
+    neigbor_num_list.assign(inum, 0);
+    neigbor_angular_num_list.assign(inum, 0);
+    rij_nep_gpu.assign(N_NM * 6, 0);
+    // use_type.resize(n_all);
+    // std::vector<int> type_to_model(n_all);
+
+    for (int ii = 0; ii < n_all; ii++)
+    {
+        itype_convert_map[ii] = model_atom_type_idx[type[ii] - 1];
+    }
+
+    for (ii = 0; ii < inum; ii++)               // local atoms: 5, CH4
+    {    
+        i = ilist[ii];                          // 0, 1, 2, 3, 4, Although we found i==ilist [ii] during testing, it is possible that there may not be enough testing
+        // itype = type[i];                        // 2, 2, 1, 2, 2
+        itype = itype_convert_map[i];                   // 1, 1, 3, 1, 1
+        jlist = firstneigh[i];
+        jnum = numneigh[i];                     // 4, 4, 4, 4, 4
+        int count_radial = 0;
+        int count_angular =0;
+        for (jj = 0; jj < jnum; jj++)
+        {
+            j = jlist[jj];                      // 1, 2, 3, 4;   0, 2, 3, 4;   0, 1, 3, 4;   0, 1, 2, 4;   0, 1, 2, 3
+            delx = x[j][0] - x[i][0];
+            dely = x[j][1] - x[i][1];
+            delz = x[j][2] - x[i][2];
+            rsq = delx * delx + dely * dely + delz * delz;
+            // jtype = type[j];                    // 2, 1, 2, 2;   2, 1, 2, 2;   2, 2, 2, 2;   2, 2, 1, 2;   2, 2, 1, 2
+            jtype = itype_convert_map[j];               // 1, 3, 1, 1;   1, 3, 1, 1;   1, 1, 1, 1;   1, 1, 3, 1;   1, 1, 3, 1
+            if (rsq <= rc2) 
+            {
+                neighbor_list[count_radial * inum + i] = j;
+                rij_nep_gpu[0* N_NM + count_radial*inum+i] = delx;
+                rij_nep_gpu[1* N_NM + count_radial*inum+i] = dely;
+                rij_nep_gpu[2* N_NM + count_radial*inum+i] = delz;
+                count_radial++;
+            }
+            if (rsq <= rc_a2) 
+            {   
+                neighbor_angular_list[count_angular * inum + i] = j;
+                rij_nep_gpu[3* N_NM + count_angular*inum+i] = delx;
+                rij_nep_gpu[4* N_NM + count_angular*inum+i] = dely;
+                rij_nep_gpu[5* N_NM + count_angular*inum+i] = delz;
+                count_angular++;
+            }
+        }
+        neigbor_num_list[i] = count_radial;
+        neigbor_angular_num_list[i] = count_angular;
+    }
+
+    MPI_Allreduce(&min_dR, &min_dR_all, 1, MPI_DOUBLE, MPI_MIN, world);
+
+    if (min_dR_all < 0.81) {
+        if (me == 0) {
+            std::cout << "ERROR: there are two atoms too close, min_dR_all = " << min_dR_all << std::endl;
+        }
+        error->universe_all(FLERR, "there are two atoms too close");
+    }
+    return std::make_tuple(std::move(itype_convert_map), std::move(neighbor_list), std::move(neighbor_angular_list), std::move(neigbor_num_list), std::move(neigbor_angular_num_list), std::move(rij_nep_gpu));
+    // return std::make_tuple(imagetype, imagetype_map, neighbor_list, dR_neigh);
+}
+
 void PairPWMLFF::compute(int eflag, int vflag)
 {
     if (eflag || vflag) ev_setup(eflag, vflag);
 
     // int newton_pair = force->newton_pair;
     int ff_idx;
-    // int nlocal = atom->nlocal;
+    int nlocal = atom->nlocal;
     int current_timestep = update->ntimestep;
     // int total_timestep = update->laststep;
-    // int n_all = nlocal + nghost;
     bool calc_virial_from_mlff = false;
     bool calc_egroup_from_mlff = false;
     int ntypes = atom->ntypes;
     int nghost = atom->nghost;
+    int n_all = nlocal + nghost;
     // int inum, jnum, itype, jtype;
     double max_err, global_max_err, max_err_ei, global_max_err_ei;    
     // for dp and nep model from jitscript
@@ -752,7 +895,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
             if ((num_ff == 1) or (current_timestep % out_freq != 0)) {
                                 // can not set the atom->type (the type set in config) to nep forcefild order, because the ghost atoms type same as the conifg
                 // The atomic types corresponding to the index of neighbors are constantly changing
-                nep_models[ff_idx].compute_for_lammps(
+                nep_cpu_models[ff_idx].compute_for_lammps(
                 atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh, atom->type, atom->x,
                 total_potential, total_virial, per_atom_potential, atom->f, per_atom_virial, ff_idx);
                                 if (eflag) {
@@ -774,7 +917,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
                     f_n[ff_idx][i][2] = 0;
                     e_atom_n[ff_idx][i] = 0;
                 }
-                                nep_models[ff_idx].compute_for_lammps(
+                                nep_cpu_models[ff_idx].compute_for_lammps(
                     atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh,atom->type, atom->x,
                     total_potential, total_virial, e_atom_n[ff_idx], f_n[ff_idx], per_atom_virial, ff_idx);
                 if (ff_idx == 0) {
@@ -802,7 +945,70 @@ void PairPWMLFF::compute(int eflag, int vflag)
     } // model_type == 1: nep_cpu version
     //   exploration mode.
     //   calculate the error of the force
-    
+    else if (model_type == 2) {
+        double total_potential = 0.0;
+        // double total_virial[6] = {0.0};
+        double* per_atom_potential = nullptr;
+        double** per_atom_virial = nullptr;
+        if (cvflag_atom) {
+            per_atom_virial = cvatom;
+        }
+        if (eflag_atom) {
+            per_atom_potential = eatom;
+        }
+        
+        // can not set the atom->type (the type set in config) to nep forcefild order, because the ghost atoms type same as the conifg
+        // The atomic types corresponding to the index of neighbors are constantly changing
+
+        // fist calculate the input, just see find_neigh_nep
+        // then to compute -> and skip the find_neigh -> to calculate features -> ... 
+        // then construct the output result
+        
+        std::tie(itype_convert_map, neighbor_list, neighbor_angular_list, neigbor_num_list, neigbor_angular_num_list, rij_nep_gpu) = generate_neighdata_nep_gpu();
+        
+        std::vector<double> cpu_potential_per_atom(list->inum, 0.0);
+        std::vector<double> cpu_force_per_atom(n_all * 3, 0.0);
+        std::vector<double> cpu_virial_per_atom(n_all * 3, 0.0);
+        std::vector<double> cpu_total_virial(6, 0.0);
+        // for(int tmpi=0;tmpi< 10;tmpi++) {
+        //     printf("before ei [%d] = %f", tmpi, cpu_potential_per_atom[tmpi]);
+        // }
+        nep_gpu_model.compute_small_box(
+        n_all, list->inum, nep_gpu_nm, itype_convert_map.data(), neigbor_num_list.data(), neighbor_list.data(), neigbor_angular_num_list.data(), neighbor_angular_list.data(), rij_nep_gpu.data(), 
+        cpu_potential_per_atom.data(), cpu_force_per_atom.data(), cpu_total_virial.data());
+        // for(int tmpi=0;tmpi< 10;tmpi++) {
+        //     printf("after ei [%d] = %f", tmpi, cpu_potential_per_atom[tmpi]);
+        // }
+        if (eflag) {
+            // printf("before eng %f\n", eng_vdwl);
+            double tmp_etot = 0;
+            for (int i = 0; i < list->inum; ++i) {
+            eng_vdwl += cpu_potential_per_atom[i];
+            tmp_etot += cpu_potential_per_atom[i];
+            }
+            // printf("after eng %f real etot %f\n", eng_vdwl, tmp_etot);
+            // std::cout<< "etot " << eng_vdwl << std::endl;
+        }
+        if (vflag) {
+            for (int component = 0; component < 6; ++component) {
+            virial[component] += cpu_total_virial[component];
+            }
+        }
+        if (eflag_atom) {
+            for (int i = 0; i < list->inum; ++i) {
+                per_atom_potential[i] = cpu_potential_per_atom[i];
+            }
+        }
+        // copy force
+        for (int i = 0; i < n_all; ++i) {
+            atom->f[i][0] = cpu_force_per_atom[i];
+            atom->f[i][1] = cpu_force_per_atom[n_all + i];
+            atom->f[i][2] = cpu_force_per_atom[2*n_all + i];
+            // std::cout<< "force i " << i << " " << atom->f[i][0] << " " << atom->f[i][1] << " " << atom->f[i][2] << std::endl;
+        }
+    }
+
+    // for jit model or nep_cpu model, the mulit nep_cpu models have error
     if (num_ff > 1 && (current_timestep % out_freq == 0)) {
         // calculate model deviation with Force
         std::pair<double, double> result = calc_max_error(f_n, e_atom_n);

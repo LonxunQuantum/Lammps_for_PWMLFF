@@ -40,7 +40,7 @@ http://doc.lonxun.com/PWMLFF/models/nep/NEP%20model/
 
 // #define USE_TABLE_FOR_RADIAL_FUNCTIONS
 
-class NEP3
+class NEP3_CPU
 {
 public:
   struct ParaMB {
@@ -102,8 +102,8 @@ public:
     std::vector<double> dc8_sum;
   };
 
-  NEP3();
-  NEP3(const std::string& potential_filename);
+  NEP3_CPU();
+  NEP3_CPU(const std::string& potential_filename);
 
   void init_from_file(const std::string& potential_filename, const bool is_rank_0);
 
