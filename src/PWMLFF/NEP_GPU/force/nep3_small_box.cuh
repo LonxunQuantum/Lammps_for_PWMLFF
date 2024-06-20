@@ -32,12 +32,70 @@ static __device__ __inline__ double atomicAdd(double* address, double val)
 }
 #endif
 
+static __global__ void find_neighbor_list_small_box(
+  NEP3::ParaMB paramb,
+  const int n_all,
+  const int N, // inum
+  const int N1, // 0
+  const int N2, // inum
+  const int NM,
+  const int* __restrict__ g_type,
+  const int* __restrict__ g_ilist,
+  const int* __restrict__ g_numneigh,
+  const int* __restrict__ g_firstneigh,
+  const double* __restrict__ g_x,
+  const double* __restrict__ g_y,
+  const double* __restrict__ g_z,
+  int* g_NN_radial,
+  int* g_NL_radial,
+  int* g_NN_angular,
+  int* g_NL_angular,
+  float* g_x12_radial,
+  float* g_y12_radial,
+  float* g_z12_radial,
+  float* g_x12_angular,
+  float* g_y12_angular,
+  float* g_z12_angular)
+{
+  int n1 = blockIdx.x * blockDim.x + threadIdx.x + N1;
+  if (n1 < N) {
+    int count_radial = 0;
+    int count_angular = 0;
+    int i = g_ilist[n1];
+    int jnum = g_numneigh[i];
+    for (int jj = 0; jj < jnum; jj++) {
+      int n2 = g_firstneigh[n1*NM + jj];
+      double x12 = g_x[n1] - g_x[n2];
+      double y12 = g_y[n1] - g_y[n2];
+      double z12 = g_z[n1] - g_z[n2];
+      float distance_square = float(x12 * x12 + y12 * y12 + z12 * z12);
+
+      if (distance_square < paramb.rc_radial * paramb.rc_radial) {
+        g_NL_radial[ count_radial * N + n1] = n2;
+        g_x12_radial[count_radial * N + n1] = float(x12);
+        g_y12_radial[count_radial * N + n1] = float(y12);
+        g_z12_radial[count_radial * N + n1] = float(z12);
+        count_radial++;
+      }
+      if (distance_square < paramb.rc_angular * paramb.rc_angular) {
+        g_NL_angular[count_angular * N + n1] = n2;
+        g_x12_angular[count_angular * N + n1] = float(x12);
+        g_y12_angular[count_angular * N + n1] = float(y12);
+        g_z12_angular[count_angular * N + n1] = float(z12);
+        count_angular++;
+      }
+    } //for
+    g_NN_radial[n1] = count_radial;
+    g_NN_angular[n1] = count_angular;
+  }// if
+}
+
 static __global__ void find_descriptor_small_box(
   NEP3::ParaMB paramb,
   NEP3::ANN annmb,
   const int N,
   const int N1,
-  const int N2,
+  const int nlocal,
   const int* g_NN_radial,
   const int* g_NL_radial,
   const int* g_NN_angular,
@@ -60,7 +118,7 @@ static __global__ void find_descriptor_small_box(
   float* g_sum_fxyz)
 {
   int n1 = blockIdx.x * blockDim.x + threadIdx.x + N1;
-  if (n1 < N2) {
+  if (n1 < N) {
     int t1 = g_type[n1];
     float q[MAX_DIM] = {0.0f};
     // get radial descriptors
@@ -69,9 +127,6 @@ static __global__ void find_descriptor_small_box(
       int n2 = g_NL_radial[index];
       float r12[3] = {g_x12_radial[index], g_y12_radial[index], g_z12_radial[index]};
       float d12 = sqrt(r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2]);
-      // if (n1 == 0){
-      //   printf("descriptor n1 %d n1_type %d n2 %d n2_type %d neigbors %d d12 %f\n", n1, t1, n2, g_type[n2], g_NN_radial[n1], d12);
-      // }
 #ifdef USE_TABLE
       int index_left, index_right;
       float weight_left, weight_right;
@@ -106,13 +161,7 @@ static __global__ void find_descriptor_small_box(
             int c_index = (n * (paramb.basis_size_radial + 1) + k) * paramb.num_types_sq;
             c_index += t1 * paramb.num_types + t2;
             gn12 += fn12[k] * annmb.c[c_index];
-            // if (n1 == 0) {
-            //   printf("2body feature n1=0 c[%d]=%f fn12[%d]=%f gn12 %f\n", c_index, annmb.c[c_index], k, fn12[k], gn12);
-            // }            
           }
-          // if (n1 == 0) {
-          //   printf("2body feature n1=0 n %d gn12 %f\n", n, gn12);
-          // }
           q[n] += gn12;
         }
       }
@@ -173,15 +222,12 @@ static __global__ void find_descriptor_small_box(
         find_q_with_5body(paramb.n_max_angular + 1, n, s, q + (paramb.n_max_radial + 1));
       }
       for (int abc = 0; abc < NUM_OF_ABC; ++abc) {
-        g_sum_fxyz[(n * NUM_OF_ABC + abc) * N + n1] = s[abc];
+        g_sum_fxyz[(n * NUM_OF_ABC + abc) * nlocal + n1] = s[abc];
       }
     }
 
     // nomalize descriptor
     for (int d = 0; d < annmb.dim; ++d) {
-      // if (n1 ==0) {
-      //   printf("n1=0 q[%d] = %f  q_scaler[%d] = %f \n", d, q[d], d, paramb.q_scaler[d]);
-      // }
       q[d] = q[d] * paramb.q_scaler[d];
     }
 
@@ -214,10 +260,9 @@ static __global__ void find_descriptor_small_box(
     apply_ann_one_layer(
       annmb.dim, annmb.num_neurons1, annmb.w0[t1], annmb.b0[t1], annmb.w1[t1], annmb.b1, q, F, Fp, t1);
     g_pe[n1] += F;
-    // printf("g_pe ei [%d] = %f\n", n1, g_pe[n1]);
+
     for (int d = 0; d < annmb.dim; ++d) {
-      g_Fp[d * N + n1] = Fp[d] * paramb.q_scaler[d];
-      // printf("find_descript n1=%d g_Fp[ d * N + n1 %d d %d] = %f  Fp[%d] = %f\n", n1, d * N + n1, d, g_Fp[d * N + n1], d, Fp[d]);
+      g_Fp[d * nlocal + n1] = Fp[d] * paramb.q_scaler[d];
     }
   }
 }
@@ -227,7 +272,7 @@ static __global__ void find_force_radial_small_box(
   NEP3::ANN annmb,
   const int N,
   const int N1,
-  const int N2,
+  const int nlocal,
   const int* g_NN,
   const int* g_NL,
   const int* __restrict__ g_type,
@@ -246,7 +291,7 @@ static __global__ void find_force_radial_small_box(
   double* g_total_virial)
 {
   int n1 = blockIdx.x * blockDim.x + threadIdx.x + N1;
-  if (n1 < N2) {
+  if (n1 < N) {
     int t1 = g_type[n1];
     for (int i1 = 0; i1 < g_NN[n1]; ++i1) {
       int index = i1 * N + n1;
@@ -256,9 +301,6 @@ static __global__ void find_force_radial_small_box(
       float d12 = sqrt(r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2]);
       float d12inv = 1.0f / d12;
       float f12[3] = {0.0f};
-      // if (n1 == 0) {
-      // printf("check radial n1=%d n2=%d type n1 %d type n2 %d neighbor nums %d\n",n1, n2, t1, t2, g_NN[n1]);
-      // }
 #ifdef USE_TABLE
       int index_left, index_right;
       float weight_left, weight_right;
@@ -271,7 +313,7 @@ static __global__ void find_force_radial_small_box(
             weight_left +
           g_gnp_radial[(index_right * paramb.num_types_sq + t12) * (paramb.n_max_radial + 1) + n] *
             weight_right;
-        float tmp12 = g_Fp[n1 + n * N] * gnp12 * d12inv;
+        float tmp12 = g_Fp[n1 + n * nlocal] * gnp12 * d12inv;
         for (int d = 0; d < 3; ++d) {
           f12[d] += tmp12 * r12[d];
         }
@@ -284,7 +326,7 @@ static __global__ void find_force_radial_small_box(
       if (paramb.version == 2) {
         find_fn_and_fnp(paramb.n_max_radial, paramb.rcinv_radial, d12, fc12, fcp12, fn12, fnp12);
         for (int n = 0; n <= paramb.n_max_radial; ++n) {
-          float tmp12 = g_Fp[n1 + n * N] * fnp12[n] * d12inv;
+          float tmp12 = g_Fp[n1 + n * nlocal] * fnp12[n] * d12inv;
           tmp12 *= (paramb.num_types == 1)
                      ? 1.0f
                      : annmb.c[(n * paramb.num_types + t1) * paramb.num_types + t2];
@@ -302,7 +344,7 @@ static __global__ void find_force_radial_small_box(
             c_index += t1 * paramb.num_types + t2;
             gnp12 += fnp12[k] * annmb.c[c_index];
           }
-          float tmp12 = g_Fp[n1 + n * N] * gnp12 * d12inv;
+          float tmp12 = g_Fp[n1 + n * nlocal] * gnp12 * d12inv;
           for (int d = 0; d < 3; ++d) {
             f12[d] += tmp12 * r12[d];
           }
@@ -354,14 +396,7 @@ static __global__ void find_force_radial_small_box(
       atomicAdd(&g_virial[n2 + 6 * N], s_syx);
       atomicAdd(&g_virial[n2 + 7 * N], s_szx);
       atomicAdd(&g_virial[n2 + 8 * N], s_szy);
-      // if (n1==0){
-      //   printf("force radial n1 n2 f12 %d %d f12[0]=%f, f12[1]=%f, f12[2]=%f\n", n1, n2, f12[0], f12[1], f12[2]);
-      //   printf("force radial n11 n2 %d %d g_fx[n1 %d] = %f, g_fy[n1 %d] = %f, g_fz[n1 %d] = %f\n",
-      //     n1, n2, n1, g_fx[n1], n1, g_fy[n1], n1, g_fz[n1]);
-          
-      //   printf("force radial n1 n22 %d %d g_fx[n2 %d] = %f, g_fy[n2 %d] = %f, g_fz[n2 %d] = %f\n",
-      //     n1, n2, n2, g_fx[n2], n2, g_fy[n2], n2, g_fz[n2]);
-      // }
+
       atomicAdd(&g_total_virial[0], s_sxx);// xx
       atomicAdd(&g_total_virial[1], s_syy);// yy
       atomicAdd(&g_total_virial[2], s_szz);// zz
@@ -377,7 +412,7 @@ static __global__ void find_force_angular_small_box(
   NEP3::ANN annmb,
   const int N,
   const int N1,
-  const int N2,
+  const int nlocal,
   const int* g_NN_angular,
   const int* g_NL_angular,
   const int* __restrict__ g_type,
@@ -398,15 +433,15 @@ static __global__ void find_force_angular_small_box(
   double* g_total_virial)
 {
   int n1 = blockIdx.x * blockDim.x + threadIdx.x + N1;
-  if (n1 < N2) {
+  if (n1 < N) {
 
     float Fp[MAX_DIM_ANGULAR] = {0.0f};
     float sum_fxyz[NUM_OF_ABC * MAX_NUM_N];
     for (int d = 0; d < paramb.dim_angular; ++d) {
-      Fp[d] = g_Fp[(paramb.n_max_radial + 1 + d) * N + n1];
+      Fp[d] = g_Fp[(paramb.n_max_radial + 1 + d) * nlocal + n1];
     }
     for (int d = 0; d < (paramb.n_max_angular + 1) * NUM_OF_ABC; ++d) {
-      sum_fxyz[d] = g_sum_fxyz[d * N + n1];
+      sum_fxyz[d] = g_sum_fxyz[d * nlocal + n1];
     }
 
     int t1 = g_type[n1];
@@ -532,14 +567,7 @@ static __global__ void find_force_angular_small_box(
       atomicAdd(&g_virial[n2 + 6 * N], s_syx);
       atomicAdd(&g_virial[n2 + 7 * N], s_szx);
       atomicAdd(&g_virial[n2 + 8 * N], s_szy);
-      // if (n1 == 0){
-      //   printf("force angular n1 n2 f12 %d %d f12[0]=%f, f12[1]=%f, f12[2]=%f\n", n1, n2, f12[0], f12[1], f12[2]);
-      //   printf("force angular n11 n2 %d %d g_fx[n1 %d] = %f, g_fy[n1 %d] = %f, g_fz[n1 %d] = %f\n",
-      //     n1, n2, n1, g_fx[n1], n1, g_fy[n1], n1, g_fz[n1]);
-          
-      //   printf("force angular n1 n22 %d %d g_fx[n2 %d] = %f, g_fy[n2 %d] = %f, g_fz[n2 %d] = %f\n",
-      //     n1, n2, n2, g_fx[n2], n2, g_fy[n2], n2, g_fz[n2]);
-      // }
+
       atomicAdd(&g_total_virial[0], s_sxx);// xx
       atomicAdd(&g_total_virial[1], s_syy);// yy
       atomicAdd(&g_total_virial[2], s_szz);// zz

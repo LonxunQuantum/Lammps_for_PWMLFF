@@ -50,8 +50,7 @@ class NEP3
 public:
   struct ParaMB {
     int version = 2; // NEP version, 2 for NEP2 and 3 for NEP3
-    int model_type =
-      0; // 0=potential, 1=dipole, 2=polarizability, 3=temperature-dependent free energy
+    int model_type = 0; // 0=potential, 1=dipole, 2=polarizability, 3=temperature-dependent free energy
     float rc_radial = 0.0f;     // radial cutoff
     float rc_angular = 0.0f;    // angular cutoff
     float rcinv_radial = 0.0f;  // inverse of the radial cutoff
@@ -89,27 +88,34 @@ public:
     const float* b1_pol;
   };
   NEP3();
-  void init_from_file(const char* file_potential, const int num_atoms);
+  void init_from_file(const char* file_potential, const bool is_rank_0);
 
   ~NEP3(void);
-  int N2;
-  int N1;
+  // int inum;
+  // int nlocal;
+  // int partition; // max(inum, nlocal)
+  // int nghost;
+  // int nall;
+
   ParaMB paramb;
   ANN annmb;
   NEP3_Data nep_data;
   std::vector<int> map_atom_type_idx;
   std::vector<int> element_atomic_number_list;
-
+  int atom_nums = 0;
+  int atom_nlocal = 0;
   void update_potential(float* parameters, ANN& ann);
   // void update_potential_from_cpu(std::vector<float> parameters, ANN& ann);
-  void rest_nep_data(int max_atom_nums);
+  void rest_nep_data(int max_atom_nums, int n_local);
 #ifdef USE_TABLE
   void construct_table(float* parameters);
 #endif
+  // void set_partition(int n_all, int n_local, int n_ghost, int n_inum);
 
   void compute_small_box(
     int n_all, //n_local + nghost
-    int N, //atom nums, n_local
+    int nlocal, 
+    int N, // list->inum
     int NM,// maxneighbors
     int* itype,//atoms' type,the len is n_all
     int* cpu_nn_radail, // the len is N, value is the neighbor nums of atom_i 
@@ -120,6 +126,22 @@ public:
     double* cpu_potential_per_atom, // the output of ei
     double* cpu_force_per_atom,     // the output of force
     double* cpu_total_virial     // the output of virial len 6
+    );
+
+  void compute_small_box_optim(
+    int n_all, //n_local + nghost
+    int n_local,
+    int n_ghost,
+    int N, //atom nums
+    int NM,// maxneighbors
+    int* itype_cpu,//atoms' type,the len is [n_all]
+    int* ilist_cpu, // atom i list
+    int* numneigh_cpu, // the neighbor nums of each i, [inum]
+    int* firstneigh_cpu, // the neighbor list of each i, [inum * NM]
+    double* position_cpu, // postion of atoms x, [n_all * 3]
+    double* cpu_potential_per_atom, // the output of ei
+    double* cpu_force_per_atom,     // the output of force
+    double* cpu_total_virial     // the output of virial
     );
   bool has_dftd3 = false;
 };

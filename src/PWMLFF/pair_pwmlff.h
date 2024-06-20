@@ -31,6 +31,7 @@ namespace LAMMPS_NS {
             std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> generate_neighdata();
             std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<double>> generate_neighdata_nep();
             std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>, std::vector<float>> generate_neighdata_nep_gpu();
+            std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> convert_dim();
             void compute(int, int) override;
             void settings(int, char **) override;
             void coeff(int, char **) override;
@@ -89,6 +90,9 @@ namespace LAMMPS_NS {
             std::vector<int> neighbor_type_list; // for nep find neigh and forward
             std::vector<double> dR_neigh;   // for dp with jit, nep with jit
             std::vector<float> rij_nep_gpu; // for nep gpu
+
+            std::vector<double> position_cpu; // for nep gpu optim
+            std::vector<int>   firstneighbor_cpu; // for nep gpu optim
     };
 }
 #endif

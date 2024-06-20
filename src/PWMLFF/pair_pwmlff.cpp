@@ -136,13 +136,13 @@ void PairPWMLFF::settings(int narg, char** arg)
                     dlclose(handle);
                 }
                 else {
-                    std::cout << "Load libnep_gpu.so success. The number of GPUs " << num_devices << " will be used !"<< std::endl;
+                    std::cout << "Load libnep_gpu.so success. The GPU device will be used !"<< std::endl;
                     use_nep_gpu = true;
                     dlclose(handle);
                 }
                 // if the gpu nums > 0 and libnep.so is exsits, use gpu model
                 if (use_nep_gpu) {
-                    nep_gpu_model.init_from_file(model_file.c_str(), nmax);
+                    nep_gpu_model.init_from_file(model_file.c_str(), is_rank_0);
                     model_type = 2;
                     std::cout<<"load nep.txt success and the model type is 2" << std::endl;
                 } else {
@@ -647,6 +647,37 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<dou
     // return std::make_tuple(imagetype, imagetype_map, neighbor_list, dR_neigh);
 }
 
+std::tuple<std::vector<int>, std::vector<int>, std::vector<double>>PairPWMLFF::convert_dim(){
+    int nlocal = atom->nlocal;
+    int nghost = atom->nghost; 
+    int n_all = nlocal + nghost;
+    int *itype, *numneigh, **firstneigh;
+    int ii, jj, inum, jnum;
+    
+    inum = list->inum;
+    itype = atom->type;
+    numneigh = list->numneigh;
+    firstneigh = list->firstneigh;
+    double **x = atom->x;
+    itype_convert_map.assign(n_all, -1);
+    position_cpu.assign(n_all*3, 0);
+    firstneighbor_cpu.assign(inum * nep_gpu_nm, 0);
+
+    for(ii=0; ii < n_all;ii++) {
+        itype_convert_map[ii] = model_atom_type_idx[itype[ii] - 1];
+        position_cpu[ii] = x[ii][0];
+        position_cpu[  n_all+ii] = x[ii][1];
+        position_cpu[2*n_all+ii] = x[ii][2];
+        if (ii < inum){
+            jnum = numneigh[ii];
+            for(jj=0; jj < jnum; ++jj){
+                firstneighbor_cpu[ii*nep_gpu_nm + jj] = firstneigh[ii][jj];
+            }
+        }
+    }
+    return std::make_tuple(std::move(itype_convert_map), std::move(firstneighbor_cpu), std::move(position_cpu));
+}
+
 std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>, std::vector<float>> PairPWMLFF::generate_neighdata_nep_gpu()
 {   
     int i, j, k, ii, jj, inum, jnum, itype, jtype;
@@ -675,6 +706,7 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int
     int NM = nep_gpu_nm;
     int N_NM = inum * NM;
     // imagetype.resize(inum);
+    // printf("find neighbor n_all %d nlocal %d nghost %d inum %d\n", n_all, nlocal, nghost, inum);
     neighbor_list.assign(N_NM, 0);
     neighbor_angular_list.assign(N_NM, 0);
     itype_convert_map.assign(n_all, -1);
@@ -917,7 +949,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
                     f_n[ff_idx][i][2] = 0;
                     e_atom_n[ff_idx][i] = 0;
                 }
-                                nep_cpu_models[ff_idx].compute_for_lammps(
+                nep_cpu_models[ff_idx].compute_for_lammps(
                     atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh,atom->type, atom->x,
                     total_potential, total_virial, e_atom_n[ff_idx], f_n[ff_idx], per_atom_virial, ff_idx);
                 if (ff_idx == 0) {
@@ -963,19 +995,39 @@ void PairPWMLFF::compute(int eflag, int vflag)
         // fist calculate the input, just see find_neigh_nep
         // then to compute -> and skip the find_neigh -> to calculate features -> ... 
         // then construct the output result
+        // nep_gpu_model.set_partition(n_all, atom->nlocal, atom->nghost, list->inum);
         
         std::tie(itype_convert_map, neighbor_list, neighbor_angular_list, neigbor_num_list, neigbor_angular_num_list, rij_nep_gpu) = generate_neighdata_nep_gpu();
         
         std::vector<double> cpu_potential_per_atom(list->inum, 0.0);
         std::vector<double> cpu_force_per_atom(n_all * 3, 0.0);
-        std::vector<double> cpu_virial_per_atom(n_all * 3, 0.0);
         std::vector<double> cpu_total_virial(6, 0.0);
         // for(int tmpi=0;tmpi< 10;tmpi++) {
         //     printf("before ei [%d] = %f", tmpi, cpu_potential_per_atom[tmpi]);
         // }
+        // printf("before compute nall %d nlocal %d nghost %d inum %d\n", n_all, atom->nlocal, atom->nghost, list->inum);
+
         nep_gpu_model.compute_small_box(
-        n_all, list->inum, nep_gpu_nm, itype_convert_map.data(), neigbor_num_list.data(), neighbor_list.data(), neigbor_angular_num_list.data(), neighbor_angular_list.data(), rij_nep_gpu.data(), 
+        n_all, atom->nlocal, list->inum, nep_gpu_nm, itype_convert_map.data(), neigbor_num_list.data(), neighbor_list.data(), neigbor_angular_num_list.data(), neighbor_angular_list.data(), rij_nep_gpu.data(), 
         cpu_potential_per_atom.data(), cpu_force_per_atom.data(), cpu_total_virial.data());
+
+        // std::tie(itype_convert_map, firstneighbor_cpu, position_cpu) = convert_dim();
+
+        // nep_gpu_model.compute_small_box_optim(
+        // n_all, 
+        // atom->nlocal,
+        // atom->nghost,
+        // list->inum, 
+        // nep_gpu_nm, 
+        // itype_convert_map.data(),
+        // list->ilist,
+        // list->numneigh,
+        // firstneighbor_cpu.data(),
+        // position_cpu.data(),
+        // cpu_potential_per_atom.data(), 
+        // cpu_force_per_atom.data(), 
+        // cpu_total_virial.data());
+
         // for(int tmpi=0;tmpi< 10;tmpi++) {
         //     printf("after ei [%d] = %f", tmpi, cpu_potential_per_atom[tmpi]);
         // }
@@ -1004,7 +1056,10 @@ void PairPWMLFF::compute(int eflag, int vflag)
             atom->f[i][0] = cpu_force_per_atom[i];
             atom->f[i][1] = cpu_force_per_atom[n_all + i];
             atom->f[i][2] = cpu_force_per_atom[2*n_all + i];
-            // std::cout<< "force i " << i << " " << atom->f[i][0] << " " << atom->f[i][1] << " " << atom->f[i][2] << std::endl;
+
+            // if (current_timestep ==39) {
+            //     printf("force_%d = [%f, %f, %f]\n", i, atom->f[i][0], atom->f[i][1], atom->f[i][2]);
+            // }
         }
     }
 
