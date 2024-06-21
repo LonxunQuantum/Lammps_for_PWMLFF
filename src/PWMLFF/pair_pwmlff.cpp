@@ -1061,7 +1061,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
             atom->f[i][1] = cpu_force_per_atom[n_all + i];
             atom->f[i][2] = cpu_force_per_atom[2*n_all + i];
 
-            // if (current_timestep ==39) {
+            // if (i == 0) {
             //     printf("force_%d = [%f, %f, %f]\n", i, atom->f[i][0], atom->f[i][1], atom->f[i][2]);
             // }
         }

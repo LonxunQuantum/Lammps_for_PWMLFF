@@ -275,6 +275,7 @@ void NEP3::rest_nep_data(int input_atom_num, int n_local) {
   //   nep_data.Fp.resize(n_local * annmb.dim);
   //   nep_data.sum_fxyz.resize(n_local * (paramb.n_max_angular + 1) * NUM_OF_ABC);
   // }
+  // printf("reset nep data atom_num = inum = %d n_local = %d\n", input_atom_num, n_local);
   atom_nums = input_atom_num;
   nep_data.NN_radial.resize(atom_nums);
   nep_data.NL_radial.resize(atom_nums * paramb.MN_radial);
@@ -389,10 +390,11 @@ void NEP3::compute_small_box(
   potential_per_atom.fill(0.0);
   GPU_Vector<double> force_per_atom(n_all * 3);
   force_per_atom.fill(0.0);
-  GPU_Vector<double> virial_per_atom(n_all * 3);
+  GPU_Vector<double> virial_per_atom(n_all * N * 9);
+  virial_per_atom.fill(0.0);
   GPU_Vector<double> total_virial(6);
   total_virial.fill(0.0);
-
+  // printf("before find_descriptor_small_box\n");
   find_descriptor_small_box<<<grid_size, BLOCK_SIZE>>>(
     paramb,
     annmb,
@@ -509,7 +511,7 @@ void NEP3::compute_small_box_optim(
   potential_per_atom.fill(0.0);
   GPU_Vector<double> force_per_atom(n_all * 3);
   force_per_atom.fill(0.0);
-  GPU_Vector<double> virial_per_atom(n_all * 3);
+  GPU_Vector<double> virial_per_atom(n_all * 9);
   GPU_Vector<double> total_virial(6);
   total_virial.fill(0.0);
 

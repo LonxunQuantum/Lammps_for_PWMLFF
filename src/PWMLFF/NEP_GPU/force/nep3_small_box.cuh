@@ -260,10 +260,12 @@ static __global__ void find_descriptor_small_box(
     apply_ann_one_layer(
       annmb.dim, annmb.num_neurons1, annmb.w0[t1], annmb.b0[t1], annmb.w1[t1], annmb.b1, q, F, Fp, t1);
     g_pe[n1] += F;
-
     for (int d = 0; d < annmb.dim; ++d) {
       g_Fp[d * nlocal + n1] = Fp[d] * paramb.q_scaler[d];
     }
+    // if (n1 == N-1){
+    //   printf("g_pe[%d] = %f g_Fp_d0[%d] = %f\n", n1, g_pe[n1], n1, g_Fp[0 * nlocal + n1]);
+    // }
   }
 }
 
@@ -292,6 +294,9 @@ static __global__ void find_force_radial_small_box(
 {
   int n1 = blockIdx.x * blockDim.x + threadIdx.x + N1;
   if (n1 < N) {
+    // if (n1 == 0){
+    //   printf("find_force_radial_small_box n1 = 0\n");
+    // }
     int t1 = g_type[n1];
     for (int i1 = 0; i1 < g_NN[n1]; ++i1) {
       int index = i1 * N + n1;
@@ -434,7 +439,9 @@ static __global__ void find_force_angular_small_box(
 {
   int n1 = blockIdx.x * blockDim.x + threadIdx.x + N1;
   if (n1 < N) {
-
+    // if (n1 == 0){
+    //   printf("find_force_angular_small_box n1 = 0\n");
+    // }
     float Fp[MAX_DIM_ANGULAR] = {0.0f};
     float sum_fxyz[NUM_OF_ABC * MAX_NUM_N];
     for (int d = 0; d < paramb.dim_angular; ++d) {

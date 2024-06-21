@@ -80,7 +80,7 @@ namespace LAMMPS_NS {
             double cutoff_angular;
             //common params
             int max_neighbor;
-            int nep_gpu_nm = 2000; //maxneighbor of nep_gpu, fixed
+            int nep_gpu_nm = 1000; //maxneighbor of nep_gpu, fixed
             std::string model_name;
 
             // std::vector<int> imagetype, imagetype_map, neighbor_list;
