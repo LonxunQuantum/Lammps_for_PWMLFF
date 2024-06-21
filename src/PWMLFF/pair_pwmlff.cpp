@@ -19,6 +19,7 @@
 #include "update.h"
 #include "domain.h"
 #include <dlfcn.h>
+#include <cuda_runtime.h>
 
 using namespace LAMMPS_NS;
 
@@ -142,9 +143,12 @@ void PairPWMLFF::settings(int narg, char** arg)
                 }
                 // if the gpu nums > 0 and libnep.so is exsits, use gpu model
                 if (use_nep_gpu) {
+                    int device_id = rank % num_devices;
+                    cudaSetDevice(device_id);
                     nep_gpu_model.init_from_file(model_file.c_str(), is_rank_0);
                     model_type = 2;
-                    std::cout<<"load nep.txt success and the model type is 2" << std::endl;
+                    printf("MPI rank %d rank using GPU device %d\n", rank, device_id);
+                    // std::cout<<"load nep.txt success and the model type is 2" << std::endl;
                 } else {
                     nep_cpu_model.init_from_file(model_file, is_rank_0);
                     nep_cpu_models.push_back(nep_cpu_model);

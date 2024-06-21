@@ -19,17 +19,26 @@ SIZE =		size
 ARCHIVE =	ar
 ARFLAGS =	-rc
 SHLIBFLAGS =	-shared -rdynamic
-NEP_CUDA_PATH = /data/home/wuxingxing/codespace/lammps_setatom/src/PWMLFF/NEP_GPU
+NEP_CUDA_PATH = $(CURDIR)/../PWMLFF/NEP_GPU
+
+CUDA_HOME = $(CUDADIR)
+# CUDA include and lib paths
+CUDA_INC_PATH = $(CUDA_HOME)/include
+CUDA_LIB_PATH = $(CUDA_HOME)/lib64
+
 PYTORCH_PATH = $(shell python3 -c "import torch; print(torch.__path__[0])")
 CCFLAGS += -I$(PYTORCH_PATH)/include/
 CCFLAGS += -I$(PYTORCH_PATH)/include/torch/csrc/api/include/
 CCFLAGS += -I$(NEP_CUDA_PATH)/include
 CCFLAGS += -I../PWMLFF/NEP_GPU/force/ -I../PWMLFF/NEP_GPU/utilities/
+CCFLAGS += -I$(CUDA_INC_PATH)
 
 LINKFLAGS += -L$(PYTORCH_PATH)/lib/ -ltorch -lc10 -ltorch_cpu
 PYTHON_LIB_PATH = $(shell python3-config --prefix)/lib
 LINKFLAGS += -L$(PYTHON_LIB_PATH) -lpython3.11 -static-libstdc++ -static-libgcc
 LINKFLAGS += -L$(NEP_CUDA_PATH) -lnep_gpu
+LINKFLAGS += -L$(CUDA_LIB_PATH) -lcudart
+
 # LINKFLAGS += -L/data/home/hfhuang/software/PWmatMLFF/src/op/build/lib -lCalcOps_bind
 ifeq ($(OP_LIB_PATH),)
 $(error OP_LIB_PATH is not set)
