@@ -37,7 +37,6 @@ static __global__ void find_neighbor_list_small_box(
   const int n_all,
   const int N, // inum
   const int N1, // 0
-  const int N2, // inum
   const int NM,
   const int* __restrict__ g_type,
   const int* __restrict__ g_ilist,
@@ -65,9 +64,9 @@ static __global__ void find_neighbor_list_small_box(
     int jnum = g_numneigh[i];
     for (int jj = 0; jj < jnum; jj++) {
       int n2 = g_firstneigh[n1*NM + jj];
-      double x12 = g_x[n1] - g_x[n2];
-      double y12 = g_y[n1] - g_y[n2];
-      double z12 = g_z[n1] - g_z[n2];
+      double x12 = g_x[n2] - g_x[n1];
+      double y12 = g_y[n2] - g_y[n1];
+      double z12 = g_z[n2] - g_z[n1];
       float distance_square = float(x12 * x12 + y12 * y12 + z12 * z12);
 
       if (distance_square < paramb.rc_radial * paramb.rc_radial) {

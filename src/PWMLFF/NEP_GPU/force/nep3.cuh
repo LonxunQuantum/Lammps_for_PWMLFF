@@ -130,8 +130,7 @@ public:
 
   void compute_small_box_optim(
     int n_all, //n_local + nghost
-    int n_local,
-    int n_ghost,
+    int nlocal,
     int N, //atom nums
     int NM,// maxneighbors
     int* itype_cpu,//atoms' type,the len is [n_all]
@@ -144,4 +143,5 @@ public:
     double* cpu_total_virial     // the output of virial
     );
   bool has_dftd3 = false;
+  bool rank_0 = false;
 };

@@ -996,41 +996,34 @@ void PairPWMLFF::compute(int eflag, int vflag)
         // can not set the atom->type (the type set in config) to nep forcefild order, because the ghost atoms type same as the conifg
         // The atomic types corresponding to the index of neighbors are constantly changing
 
-        // fist calculate the input, just see find_neigh_nep
-        // then to compute -> and skip the find_neigh -> to calculate features -> ... 
-        // then construct the output result
-        // nep_gpu_model.set_partition(n_all, atom->nlocal, atom->nghost, list->inum);
-        
-        std::tie(itype_convert_map, neighbor_list, neighbor_angular_list, neigbor_num_list, neigbor_angular_num_list, rij_nep_gpu) = generate_neighdata_nep_gpu();
-        
         std::vector<double> cpu_potential_per_atom(list->inum, 0.0);
         std::vector<double> cpu_force_per_atom(n_all * 3, 0.0);
         std::vector<double> cpu_total_virial(6, 0.0);
-        // for(int tmpi=0;tmpi< 10;tmpi++) {
-        //     printf("before ei [%d] = %f", tmpi, cpu_potential_per_atom[tmpi]);
-        // }
+
+        // std::tie(itype_convert_map, neighbor_list, neighbor_angular_list, neigbor_num_list, neigbor_angular_num_list, rij_nep_gpu) = generate_neighdata_nep_gpu();
+        // // for(int tmpi=0;tmpi< 10;tmpi++) {
+        // //     printf("before ei [%d] = %f", tmpi, cpu_potential_per_atom[tmpi]);
+        // // }
         // printf("before compute nall %d nlocal %d nghost %d inum %d\n", n_all, atom->nlocal, atom->nghost, list->inum);
 
-        nep_gpu_model.compute_small_box(
-        n_all, atom->nlocal, list->inum, nep_gpu_nm, itype_convert_map.data(), neigbor_num_list.data(), neighbor_list.data(), neigbor_angular_num_list.data(), neighbor_angular_list.data(), rij_nep_gpu.data(), 
-        cpu_potential_per_atom.data(), cpu_force_per_atom.data(), cpu_total_virial.data());
+        // nep_gpu_model.compute_small_box(
+        // n_all, atom->nlocal, list->inum, nep_gpu_nm, itype_convert_map.data(), neigbor_num_list.data(), neighbor_list.data(), neigbor_angular_num_list.data(), neighbor_angular_list.data(), rij_nep_gpu.data(), 
+        // cpu_potential_per_atom.data(), cpu_force_per_atom.data(), cpu_total_virial.data());
 
-        // std::tie(itype_convert_map, firstneighbor_cpu, position_cpu) = convert_dim();
-
-        // nep_gpu_model.compute_small_box_optim(
-        // n_all, 
-        // atom->nlocal,
-        // atom->nghost,
-        // list->inum, 
-        // nep_gpu_nm, 
-        // itype_convert_map.data(),
-        // list->ilist,
-        // list->numneigh,
-        // firstneighbor_cpu.data(),
-        // position_cpu.data(),
-        // cpu_potential_per_atom.data(), 
-        // cpu_force_per_atom.data(), 
-        // cpu_total_virial.data());
+        std::tie(itype_convert_map, firstneighbor_cpu, position_cpu) = convert_dim();
+        nep_gpu_model.compute_small_box_optim(
+        n_all, 
+        atom->nlocal,
+        list->inum, 
+        nep_gpu_nm, 
+        itype_convert_map.data(),
+        list->ilist,
+        list->numneigh,
+        firstneighbor_cpu.data(),
+        position_cpu.data(),
+        cpu_potential_per_atom.data(), 
+        cpu_force_per_atom.data(), 
+        cpu_total_virial.data());
 
         // for(int tmpi=0;tmpi< 10;tmpi++) {
         //     printf("after ei [%d] = %f", tmpi, cpu_potential_per_atom[tmpi]);
@@ -1061,7 +1054,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
             atom->f[i][1] = cpu_force_per_atom[n_all + i];
             atom->f[i][2] = cpu_force_per_atom[2*n_all + i];
 
-            // if (i == 0) {
+            // if (i % 1000 == 0) {
             //     printf("force_%d = [%f, %f, %f]\n", i, atom->f[i][0], atom->f[i][1], atom->f[i][2]);
             // }
         }

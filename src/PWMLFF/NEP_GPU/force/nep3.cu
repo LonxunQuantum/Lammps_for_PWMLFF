@@ -43,6 +43,7 @@ NEP3::NEP3() {}
 
 void NEP3::init_from_file(const char* file_potential, const bool is_rank_0)
 {
+  rank_0 = is_rank_0;
   atom_nums = 0;
   std::ifstream input(file_potential);
   if (!input.is_open()) {
@@ -482,8 +483,7 @@ void NEP3::compute_small_box(
 // small box possibly used for active learning:
 void NEP3::compute_small_box_optim(
   int n_all, //n_local + nghost
-  int n_local,
-  int n_ghost,
+  int nlocal,
   int N, //atom nums
   int NM,// maxneighbors
   int* itype_cpu,//atoms' type,the len is [n_all]
@@ -496,30 +496,19 @@ void NEP3::compute_small_box_optim(
   double* cpu_total_virial     // the output of virial
 ) {
   int N1 = 0;
-  // if (N2 < N){
-  //   rest_nep_data(N);
-  // }
-  int N2 = N;
-  nep_data.NN_radial.resize(N2);
-  nep_data.NL_radial.resize(N2 * paramb.MN_radial);
-  nep_data.NN_angular.resize(N2);
-  nep_data.NL_angular.resize(N2 * paramb.MN_angular);
-  nep_data.Fp.resize(N2 * annmb.dim);
-  nep_data.sum_fxyz.resize(N2 * (paramb.n_max_angular + 1) * NUM_OF_ABC);
+  rest_nep_data(N, nlocal);
   
   GPU_Vector<double> potential_per_atom(N);
   potential_per_atom.fill(0.0);
   GPU_Vector<double> force_per_atom(n_all * 3);
   force_per_atom.fill(0.0);
   GPU_Vector<double> virial_per_atom(n_all * 9);
+  virial_per_atom.fill(0.0);
   GPU_Vector<double> total_virial(6);
   total_virial.fill(0.0);
 
   const int BLOCK_SIZE = 64;
-  // const int N = type.size();
-  const int grid_size = (N - 0 - 1) / BLOCK_SIZE + 1;
-  // const int big_neighbor_size = 2000;
-  // const int size_x12 = type.size() * big_neighbor_size;
+  const int grid_size = (N - 1) / BLOCK_SIZE + 1;
   const int size_x12 = N * NM;
 
   GPU_Vector<float> r12(size_x12 * 6);
@@ -545,7 +534,6 @@ void NEP3::compute_small_box_optim(
     n_all,
     N,
     N1,
-    N2,
     NM,
     type.data(),
     ilist.data(),
@@ -566,44 +554,32 @@ void NEP3::compute_small_box_optim(
     r12.data() + size_x12 * 5);
   CUDA_CHECK_KERNEL
 
-  // NN_radial.copy_from_host(cpu_nn_radail);
-  // NL_radial.copy_from_host(cpu_nl_radail);
-  // NN_angular.copy_from_host(cpu_nn_angular);
-  // NL_angular.copy_from_host(cpu_nl_angular);
-  // r12.copy_from_host(cpu_r12);
-  // type.copy_from_host(itype);
+  std::vector<int> tmp_cpu_NN_radial(N);
+  std::vector<int> tmp_cpu_NL_radial(N * paramb.MN_radial);
 
-  // std::vector<double> tmp_potential_per_atom(N);
-  // potential_per_atom.copy_from_host(tmp_potential_per_atom.data());
-  // for(int tmpi=0;tmpi< 10;tmpi++) {
-  //   printf("cuda before ei [%d] = %f", tmpi, tmp_potential_per_atom[tmpi]);
+  nep_data.NN_radial.copy_to_host(tmp_cpu_NN_radial.data());
+  nep_data.NL_radial.copy_to_host(tmp_cpu_NL_radial.data());
+
+  // if (rank_0) {
+  //   for (int i = 0; i < N; i++) {
+  //     if (i % 1000 == 0) {
+  //       printf("nn_radial[%d] = %d\n", i, tmp_cpu_NN_radial[i]);
+  //     }
+  //   }
+
+  //   for (int i = 0; i < N; i++) {
+  //     if (i % 1000 == 0) {
+  //     printf("nl_radial[%d][0] = %d\n", i,  tmp_cpu_NL_radial[i]);
+  //     }
+  //   }
   // }
-  // printf("gpu vector potential_per_atom[0] %f force_per_atom %f total_virial %f", potential_per_atom[0], force_per_atom[0], total_virial[0]);
-  // find_neighbor_list_small_box<<<grid_size, BLOCK_SIZE>>>(
-  //   paramb,
-  //   N,
-  //   N1,
-  //   N2,
 
-  // 这些数据直接copy from host  big_neighbor_size 保持一致
-  // GPU_Vector<float> potential_per_atom(N);
-
-
-  // const bool is_polarizability = paramb.model_type == 2;
-
-  // 需要从外部构建输入
-  // 输入包括：r12 of radial and angular
-  // 输入包括：NN_radial, NL_radial, NN_angular, NL_angular
-  // 输入包括：type list 这里输入都需要展开为一维数组。最好能分类，按照list段取
-  // 对maxneigherlist 做统一
-  // copy these list to GPU device then do:
-  // std::cout <<" start find_descriptor_small_box " << std::endl;
   find_descriptor_small_box<<<grid_size, BLOCK_SIZE>>>(
     paramb,
     annmb,
     N,
     N1,
-    N2,
+    nlocal,
     nep_data.NN_radial.data(),
     nep_data.NL_radial.data(),
     nep_data.NN_angular.data(),
@@ -632,7 +608,7 @@ void NEP3::compute_small_box_optim(
     annmb,
     N,
     N1,
-    N2,
+    nlocal,
     nep_data.NN_radial.data(),
     nep_data.NL_radial.data(),
     type.data(),
@@ -655,7 +631,7 @@ void NEP3::compute_small_box_optim(
     annmb,
     N,
     N1,
-    N2,
+    nlocal,
     nep_data.NN_angular.data(),
     nep_data.NL_angular.data(),
     type.data(),
@@ -678,6 +654,5 @@ void NEP3::compute_small_box_optim(
   potential_per_atom.copy_to_host(cpu_potential_per_atom);
   total_virial.copy_to_host(cpu_total_virial);
   force_per_atom.copy_to_host(cpu_force_per_atom);
-
 }
 
