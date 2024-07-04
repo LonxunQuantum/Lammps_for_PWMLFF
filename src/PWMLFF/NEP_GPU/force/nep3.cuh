@@ -21,6 +21,15 @@
 
 #define PARAM_SIZE 100
 
+struct LMP_Data  {
+  GPU_Vector<float> r12;
+  GPU_Vector<int> type;
+  GPU_Vector<int> ilist;
+  GPU_Vector<int> numneigh;
+  GPU_Vector<int> firstneigh;
+  GPU_Vector<double> position;
+};
+
 struct NEP3_Data {
   GPU_Vector<float> f12x; // 3-body or manybody partial forces
   GPU_Vector<float> f12y; // 3-body or manybody partial forces
@@ -35,6 +44,12 @@ struct NEP3_Data {
   GPU_Vector<int> cell_count;
   GPU_Vector<int> cell_count_sum;
   GPU_Vector<int> cell_contents;
+
+  GPU_Vector<double> potential_per_atom;
+  GPU_Vector<double> force_per_atom;
+  GPU_Vector<double> virial_per_atom;
+  GPU_Vector<double> total_virial;
+
   std::vector<int> cpu_NN_radial;
   std::vector<int> cpu_NN_angular;
 #ifdef USE_TABLE
@@ -88,7 +103,7 @@ public:
     const float* b1_pol;
   };
   NEP3();
-  void init_from_file(const char* file_potential, const bool is_rank_0);
+  void init_from_file(const char* file_potential, const bool is_rank_0, const int in_device_id);
 
   ~NEP3(void);
   // int inum;
@@ -100,13 +115,18 @@ public:
   ParaMB paramb;
   ANN annmb;
   NEP3_Data nep_data;
+  LMP_Data lmp_data;
   std::vector<int> map_atom_type_idx;
   std::vector<int> element_atomic_number_list;
   int atom_nums = 0;
   int atom_nlocal = 0;
+  int atom_nums_all = 0;
+
   void update_potential(float* parameters, ANN& ann);
   // void update_potential_from_cpu(std::vector<float> parameters, ANN& ann);
-  void rest_nep_data(int max_atom_nums, int n_local);
+  void rest_nep_data(int max_atom_nums, int n_local, int n_all, int max_neighbor, bool build_neighbor);
+
+  void checkMemoryUsage(int sgin=0);
 #ifdef USE_TABLE
   void construct_table(float* parameters);
 #endif
@@ -129,6 +149,7 @@ public:
     );
 
   void compute_small_box_optim(
+    bool is_build_neighbor,
     int n_all, //n_local + nghost
     int nlocal,
     int N, //atom nums
@@ -144,4 +165,5 @@ public:
     );
   bool has_dftd3 = false;
   bool rank_0 = false;
+  int device_id;
 };

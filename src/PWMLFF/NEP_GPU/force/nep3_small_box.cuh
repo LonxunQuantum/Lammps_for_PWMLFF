@@ -57,6 +57,7 @@ static __global__ void find_neighbor_list_small_box(
   float* g_z12_angular)
 {
   int n1 = blockIdx.x * blockDim.x + threadIdx.x + N1;
+
   if (n1 < N) {
     int count_radial = 0;
     int count_angular = 0;
@@ -86,6 +87,7 @@ static __global__ void find_neighbor_list_small_box(
     } //for
     g_NN_radial[n1] = count_radial;
     g_NN_angular[n1] = count_angular;
+    // printf("n1 = %d, count_radial = %d, count_angular = %d\n", n1, count_radial, count_angular);
   }// if
 }
 
@@ -262,9 +264,6 @@ static __global__ void find_descriptor_small_box(
     for (int d = 0; d < annmb.dim; ++d) {
       g_Fp[d * nlocal + n1] = Fp[d] * paramb.q_scaler[d];
     }
-    // if (n1 == N-1){
-    //   printf("g_pe[%d] = %f g_Fp_d0[%d] = %f\n", n1, g_pe[n1], n1, g_Fp[0 * nlocal + n1]);
-    // }
   }
 }
 

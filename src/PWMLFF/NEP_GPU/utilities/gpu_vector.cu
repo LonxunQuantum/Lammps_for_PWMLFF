@@ -86,6 +86,7 @@ void GPU_Vector<T>::resize(const size_t size, const T value, const Memory_Type m
         CHECK_CUDA_NEP(cudaMallocManaged((void**)&data_, memory_));
         allocated_ = true;
     }
+    // printf("size %d sizetype %d memory_ %d malloc %d M success\n", size, sizeof(T), memory_, memory_/1024/1024);
     fill(value);
 }
 

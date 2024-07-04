@@ -145,7 +145,7 @@ void PairPWMLFF::settings(int narg, char** arg)
                 if (use_nep_gpu) {
                     int device_id = rank % num_devices;
                     cudaSetDevice(device_id);
-                    nep_gpu_model.init_from_file(model_file.c_str(), is_rank_0);
+                    nep_gpu_model.init_from_file(model_file.c_str(), is_rank_0, device_id);
                     model_type = 2;
                     printf("MPI rank %d rank using GPU device %d\n", rank, device_id);
                     // std::cout<<"load nep.txt success and the model type is 2" << std::endl;
@@ -651,7 +651,7 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<dou
     // return std::make_tuple(imagetype, imagetype_map, neighbor_list, dR_neigh);
 }
 
-std::tuple<std::vector<int>, std::vector<int>, std::vector<double>>PairPWMLFF::convert_dim(){
+std::tuple<std::vector<int>, std::vector<int>, std::vector<double>>PairPWMLFF::convert_dim(bool is_build_neighbor){
     int nlocal = atom->nlocal;
     int nghost = atom->nghost; 
     int n_all = nlocal + nghost;
@@ -791,7 +791,8 @@ void PairPWMLFF::compute(int eflag, int vflag)
     int nghost = atom->nghost;
     int n_all = nlocal + nghost;
     // int inum, jnum, itype, jtype;
-    double max_err, global_max_err, max_err_ei, global_max_err_ei;    
+    double max_err, global_max_err, max_err_ei, global_max_err_ei;
+    bool is_build_neighbor = (current_timestep % neighbor->every == 0);
     // for dp and nep model from jitscript
     if (model_type == 0) {
 
@@ -1010,8 +1011,9 @@ void PairPWMLFF::compute(int eflag, int vflag)
         // n_all, atom->nlocal, list->inum, nep_gpu_nm, itype_convert_map.data(), neigbor_num_list.data(), neighbor_list.data(), neigbor_angular_num_list.data(), neighbor_angular_list.data(), rij_nep_gpu.data(), 
         // cpu_potential_per_atom.data(), cpu_force_per_atom.data(), cpu_total_virial.data());
 
-        std::tie(itype_convert_map, firstneighbor_cpu, position_cpu) = convert_dim();
+        std::tie(itype_convert_map, firstneighbor_cpu, position_cpu) = convert_dim(is_build_neighbor);
         nep_gpu_model.compute_small_box_optim(
+        is_build_neighbor,
         n_all, 
         atom->nlocal,
         list->inum, 

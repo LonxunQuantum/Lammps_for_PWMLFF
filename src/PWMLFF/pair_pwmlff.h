@@ -31,7 +31,7 @@ namespace LAMMPS_NS {
             std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> generate_neighdata();
             std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<double>> generate_neighdata_nep();
             std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>, std::vector<float>> generate_neighdata_nep_gpu();
-            std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> convert_dim();
+            std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> convert_dim(bool is_build_neighbor=false);
             void compute(int, int) override;
             void settings(int, char **) override;
             void coeff(int, char **) override;
@@ -80,7 +80,7 @@ namespace LAMMPS_NS {
             double cutoff_angular;
             //common params
             int max_neighbor;
-            int nep_gpu_nm = 1000; //maxneighbor of nep_gpu, fixed
+            int nep_gpu_nm = 500; //maxneighbor of nep_gpu, fixed
             std::string model_name;
 
             // std::vector<int> imagetype, imagetype_map, neighbor_list;
