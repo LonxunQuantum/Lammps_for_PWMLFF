@@ -124,7 +124,7 @@ public:
 
   void update_potential(float* parameters, ANN& ann);
   // void update_potential_from_cpu(std::vector<float> parameters, ANN& ann);
-  void rest_nep_data(int max_atom_nums, int n_local, int n_all, int max_neighbor, bool build_neighbor);
+  void rest_nep_data(int max_atom_nums, int n_local, int n_all, int max_neighbor, bool build_neighbor, bool large_box=false);
 
   void checkMemoryUsage(int sgin=0);
 #ifdef USE_TABLE
@@ -154,7 +154,7 @@ public:
     int nlocal,
     int N, //atom nums
     int NM,// maxneighbors
-    int* itype_cpu,//atoms' type,the len is [n_all]
+    int* itype_cpu, //atoms' type,the len is [n_all]
     int* ilist_cpu, // atom i list
     int* numneigh_cpu, // the neighbor nums of each i, [inum]
     int* firstneigh_cpu, // the neighbor list of each i, [inum * NM]
@@ -163,6 +163,23 @@ public:
     double* cpu_force_per_atom,     // the output of force
     double* cpu_total_virial     // the output of virial
     );
+  
+  void compute_large_box_optim(
+    bool is_build_neighbor,
+    int n_all, //n_local + nghost
+    int nlocal,
+    int N, //atom nums
+    int NM,// maxneighbors
+    int* itype_cpu, //atoms' type,the len is [n_all]
+    int* ilist_cpu, // atom i list
+    int* numneigh_cpu, // the neighbor nums of each i, [inum]
+    int* firstneigh_cpu, // the neighbor list of each i, [inum * NM]
+    double* position_cpu, // postion of atoms x, [n_all * 3]
+    double* cpu_potential_per_atom, // the output of ei
+    double* cpu_force_per_atom,     // the output of force
+    double* cpu_total_virial     // the output of virial
+    );
+
   bool has_dftd3 = false;
   bool rank_0 = false;
   int device_id;

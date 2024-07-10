@@ -22,6 +22,7 @@ heat transport, Phys. Rev. B. 104, 104309 (2021).
 
 #include "nep3.cuh"
 #include "nep3_small_box.cuh"
+#include "nep3_large_box.cuh"
 #include "utilities/common.cuh"
 #include "utilities/error.cuh"
 #include "utilities/nep_utilities.cuh"
@@ -281,7 +282,7 @@ void NEP3::checkMemoryUsage(int sgin) {
   // }
 }
 
-void NEP3::rest_nep_data(int input_atom_num, int n_local, int n_all, int max_neighbor, bool build_neighbor) {
+void NEP3::rest_nep_data(int input_atom_num, int n_local, int n_all, int max_neighbor, bool build_neighbor, bool large_box) {
   // printf("(build neighbor %d) (atom_nums %d change %d) (atom_local %d change %d) (atom_nums_all %d change %d)\n", build_neighbor, input_atom_num, (atom_nums != input_atom_num), n_local, (atom_nlocal != n_local), n_all, (atom_nums_all != n_all));
   if (atom_nums != input_atom_num) {
     atom_nums = input_atom_num;
@@ -293,7 +294,14 @@ void NEP3::rest_nep_data(int input_atom_num, int n_local, int n_all, int max_nei
     lmp_data.ilist.resize(atom_nums);
     lmp_data.numneigh.resize(atom_nums);
     lmp_data.firstneigh.resize(atom_nums*max_neighbor);
-    lmp_data.r12.resize(atom_nums*max_neighbor*6);
+    if (large_box == false) {
+      lmp_data.r12.resize(atom_nums * max_neighbor*6);
+    } 
+    // else { this code for large_box.bk
+    //   nep_data.f12x.resize(atom_nums * paramb.MN_angular);
+    //   nep_data.f12y.resize(atom_nums * paramb.MN_angular);
+    //   nep_data.f12z.resize(atom_nums * paramb.MN_angular);
+    // }
   }
 
   if (atom_nlocal != n_local) {
@@ -397,7 +405,7 @@ void NEP3::compute_small_box(
   double* cpu_total_virial     // the output of virial len 6
   )
 {
-//   rest_nep_data(N, nlocal, n_all, NM);
+//   rest_nep_data(N, nlocal, n_all, NM, false);
 
 //   int N1 = 0;
 //   const int BLOCK_SIZE = 64;
@@ -529,7 +537,7 @@ void NEP3::compute_small_box_optim(
 ) {
   int N1 = 0;
   // checkMemoryUsage(0);
-  rest_nep_data(N, nlocal, n_all, NM, is_build_neighbor);
+  rest_nep_data(N, nlocal, n_all, NM, is_build_neighbor, false);
 
   const int BLOCK_SIZE = 64;
   const int grid_size = (N - 1) / BLOCK_SIZE + 1;
@@ -568,6 +576,14 @@ void NEP3::compute_small_box_optim(
     lmp_data.r12.data() + size_x12 * 4,
     lmp_data.r12.data() + size_x12 * 5);
   CUDA_CHECK_KERNEL
+  // 与计算结果无关，可能速度会快？待测试
+  // gpu_sort_neighbor_list<<<N, paramb.MN_radial, paramb.MN_radial * sizeof(int)>>>(
+  //   N, nep_data.NN_radial.data(), nep_data.NL_radial.data());
+  // CUDA_CHECK_KERNEL
+
+  // gpu_sort_neighbor_list<<<N, paramb.MN_angular, paramb.MN_angular * sizeof(int)>>>(
+  //   N, nep_data.NN_angular.data(), nep_data.NL_angular.data());
+  // CUDA_CHECK_KERNEL
 
   find_descriptor_small_box<<<grid_size, BLOCK_SIZE>>>(
     paramb,
@@ -654,3 +670,154 @@ void NEP3::compute_small_box_optim(
   // checkMemoryUsage(5);
 }
 
+
+// small box possibly used for active learning:
+void NEP3::compute_large_box_optim(
+  bool is_build_neighbor,
+  int n_all, //n_local + nghost
+  int nlocal,
+  int N, //atom nums
+  int NM,// maxneighbors
+  int* itype_cpu, //atoms' type,the len is [n_all]
+  int* ilist_cpu, // atom i list
+  int* numneigh_cpu, // the neighbor nums of each i, [inum]
+  int* firstneigh_cpu, // the neighbor list of each i, [inum * NM]
+  double* position_cpu, // postion of atoms x, [n_all * 3]
+  double* cpu_potential_per_atom, // the output of ei
+  double* cpu_force_per_atom,     // the output of force
+  double* cpu_total_virial     // the output of virial
+) {
+  int N1 = 0;
+  // checkMemoryUsage(0);
+  rest_nep_data(N, nlocal, n_all, NM, is_build_neighbor, true);
+
+  const int BLOCK_SIZE = 64;
+  const int grid_size = (N - 1) / BLOCK_SIZE + 1;
+
+  if (is_build_neighbor) {
+    lmp_data.type.copy_from_host(itype_cpu);
+    lmp_data.ilist.copy_from_host(ilist_cpu);
+    lmp_data.numneigh.copy_from_host(numneigh_cpu);
+    lmp_data.firstneigh.copy_from_host(firstneigh_cpu);
+    // checkMemoryUsage(2);
+  }
+  lmp_data.position.copy_from_host(position_cpu);
+  
+  find_neighbor_list_large_box<<<grid_size, BLOCK_SIZE>>>(
+    paramb,
+    n_all,
+    N,
+    N1,
+    NM,
+    lmp_data.type.data(),
+    lmp_data.ilist.data(),
+    lmp_data.numneigh.data(),
+    lmp_data.firstneigh.data(),
+    lmp_data.position.data(),
+    lmp_data.position.data() + n_all,
+    lmp_data.position.data() + n_all * 2,
+    nep_data.NN_radial.data(),
+    nep_data.NL_radial.data(),
+    nep_data.NN_angular.data(),
+    nep_data.NL_angular.data());
+  CUDA_CHECK_KERNEL
+
+  find_descriptor_large_box<<<grid_size, BLOCK_SIZE>>>(
+    paramb,
+    annmb,
+    N,
+    N1,
+    nlocal,
+    nep_data.NN_radial.data(),
+    nep_data.NL_radial.data(),
+    nep_data.NN_angular.data(),
+    nep_data.NL_angular.data(),
+    lmp_data.type.data(),
+    lmp_data.position.data(),
+    lmp_data.position.data() + n_all,
+    lmp_data.position.data() + n_all * 2,
+    // false,//is_polarizability
+#ifdef USE_TABLE
+    nep_data.gn_radial.data(),
+    nep_data.gn_angular.data(),
+#endif
+    nep_data.potential_per_atom.data(),
+    nep_data.Fp.data(),
+    nep_data.virial_per_atom.data(),
+    nep_data.sum_fxyz.data());
+  CUDA_CHECK_KERNEL
+
+  // // bool is_dipole = paramb.model_type == 1;
+  find_force_radial_large_box<<<grid_size, BLOCK_SIZE>>>(
+    paramb,
+    annmb,
+    N,
+    N1,
+    nlocal,
+    nep_data.NN_radial.data(),
+    nep_data.NL_radial.data(),
+    lmp_data.type.data(),
+    lmp_data.position.data(),
+    lmp_data.position.data() + n_all,
+    lmp_data.position.data() + n_all * 2,
+    nep_data.Fp.data(),
+    // false, //is_dipole,
+#ifdef USE_TABLE
+    nep_data.gnp_radial.data(),
+#endif
+    nep_data.force_per_atom.data(),
+    nep_data.force_per_atom.data() + n_all,
+    nep_data.force_per_atom.data() + n_all * 2,
+    nep_data.virial_per_atom.data(),
+    nep_data.total_virial.data()
+    );
+  CUDA_CHECK_KERNEL
+
+  find_force_angular_large_box<<<grid_size, BLOCK_SIZE>>>(
+    paramb,
+    annmb,
+    N,
+    N1,
+    nlocal,
+    nep_data.NN_angular.data(),
+    nep_data.NL_angular.data(),
+    lmp_data.type.data(),
+    lmp_data.position.data(),
+    lmp_data.position.data() + n_all,
+    lmp_data.position.data() + n_all * 2,
+    nep_data.Fp.data(),
+    nep_data.sum_fxyz.data(),
+#ifdef USE_TABLE
+    nep_data.gn_angular.data(),
+    nep_data.gnp_angular.data(),
+#endif
+    nep_data.force_per_atom.data(),
+    nep_data.force_per_atom.data() + n_all,
+    nep_data.force_per_atom.data() + n_all * 2,
+    nep_data.virial_per_atom.data(),
+    nep_data.total_virial.data());
+  CUDA_CHECK_KERNEL
+  cudaDeviceSynchronize();
+  // checkMemoryUsage(5);
+  nep_data.total_virial.copy_to_host(cpu_total_virial);
+  nep_data.potential_per_atom.copy_to_host(cpu_potential_per_atom);
+  nep_data.force_per_atom.copy_to_host(cpu_force_per_atom);
+
+  // for (int ii = 0; ii < N; ii++) {
+  //   if (ii % 1 == 0) {
+  //     printf("m_cpu_ei[%d]=%f m_cpu_force[%d] = [%f %f %f] m_cpu_virial[%d] = [%f %f %f]\n", 
+  //     ii, cpu_potential_per_atom[ii],
+  //     ii, cpu_force_per_atom[ii], cpu_force_per_atom[ii + n_all], cpu_force_per_atom[ii + n_all * 2],
+  //     ii, tmp_viral[ii], tmp_viral[ii + n_all], tmp_viral[ii + n_all * 2]);
+  //   }
+  // }
+
+  // for (int ii = 0; ii < 9; ii++) {
+  //   printf("cpu_total_virial[%d]=%f\n", ii, cpu_total_virial[ii]);
+  // }
+  // for (int ii = 0; ii < N; ii++) {
+  //   if (ii % 1 == 0) {
+  //     printf("cpu_ei[%d]=%f cpu_force[%d] = [%f %f %f]\n", ii, cpu_potential_per_atom[ii], ii, cpu_force_per_atom[ii], cpu_force_per_atom[ii + n_all], cpu_force_per_atom[ii + n_all * 2]);
+  //   }
+  // }
+}

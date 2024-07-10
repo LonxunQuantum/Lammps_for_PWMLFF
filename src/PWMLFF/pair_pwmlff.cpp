@@ -1012,7 +1012,22 @@ void PairPWMLFF::compute(int eflag, int vflag)
         // cpu_potential_per_atom.data(), cpu_force_per_atom.data(), cpu_total_virial.data());
 
         std::tie(itype_convert_map, firstneighbor_cpu, position_cpu) = convert_dim(is_build_neighbor);
-        nep_gpu_model.compute_small_box_optim(
+        // nep_gpu_model.compute_small_box_optim(
+        // is_build_neighbor,
+        // n_all, 
+        // atom->nlocal,
+        // list->inum, 
+        // nep_gpu_nm, 
+        // itype_convert_map.data(),
+        // list->ilist,
+        // list->numneigh,
+        // firstneighbor_cpu.data(),
+        // position_cpu.data(),
+        // cpu_potential_per_atom.data(), 
+        // cpu_force_per_atom.data(), 
+        // cpu_total_virial.data());
+
+        nep_gpu_model.compute_large_box_optim(
         is_build_neighbor,
         n_all, 
         atom->nlocal,
@@ -1026,6 +1041,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
         cpu_potential_per_atom.data(), 
         cpu_force_per_atom.data(), 
         cpu_total_virial.data());
+
 
         // for(int tmpi=0;tmpi< 10;tmpi++) {
         //     printf("after ei [%d] = %f", tmpi, cpu_potential_per_atom[tmpi]);
@@ -1084,5 +1100,4 @@ void PairPWMLFF::compute(int eflag, int vflag)
     // std::cout << "t4 " << (t5 - t4).count() * 0.000001 << "\tms" << std::endl;
     // std::cout << "t5 " << (t6 - t5).count() * 0.000001 << "\tms" << std::endl;
     // std::cout << "t6 " << (t7 - t6).count() * 0.000001 << "\tms" << std::endl;
-
 }
