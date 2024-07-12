@@ -31,7 +31,6 @@ GPU_TARGETS =  $(Pascal) $(AmpereD) $(Ampere) $(Ampere4)
 # Flags
 CFLAGS = -std=c++17 -O3 $(GPU_TARGETS) -Xcompiler="-fPIC"
 INC = -I./ -I./force -I./utilities
-LDFLAGS = -shared $(GPU_TARGETS)
 LIBS = -lcublas -lcusolver
 
 # Source files
@@ -40,13 +39,15 @@ CUDA_SOURCES = force/nep3.cu utilities/error.cu utilities/gpu_vector.cu utilitie
 # Object files
 CUDA_OBJECTS = $(CUDA_SOURCES:.cu=.o)
 
-# Shared library
-SHARED_LIB = libnep_gpu.so
-
-all: $(SHARED_LIB)
+# static library
+STATIC_LIB = libnep_gpu.a
+all: $(STATIC_LIB)
 
 $(SHARED_LIB): $(CUDA_OBJECTS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+
+$(STATIC_LIB): $(CUDA_OBJECTS)
+	ar rcs $@ $^
 
 %.o: %.cu
 	$(CC) $(CFLAGS) $(INC) -c $< -o $@

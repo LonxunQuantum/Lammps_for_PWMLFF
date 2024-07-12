@@ -127,20 +127,15 @@ void PairPWMLFF::settings(int narg, char** arg)
             // load txt format model file, it should be nep
             try {
                 bool is_rank_0 = (comm->me == 0);
-                void* handle = dlopen("libnep_gpu.so", RTLD_LAZY);
-                if (!handle) {
-                std::cout << "Could not find libnep_gpu.so " << dlerror() << " The nep cpu version will be used for lammps! " << std::endl;
-                use_nep_gpu = false;
-                } else if (num_devices < 1) {
-                    std::cout << "Can not find the GPU devices. The nep cpu version will be used for lammps! " << std::endl;
+
+                if (num_devices < 1) {
+                    std::cout << "Can not find the GPU devices. The nep cpu version will be used for lammps!" << std::endl;
                     use_nep_gpu = false;
-                    dlclose(handle);
-                }
-                else {
-                    std::cout << "Load libnep_gpu.so success. The GPU device will be used !"<< std::endl;
+                } else {
+                    // std::cout << "The GPU device will be used!" << std::endl;
                     use_nep_gpu = true;
-                    dlclose(handle);
                 }
+
                 // if the gpu nums > 0 and libnep.so is exsits, use gpu model
                 if (use_nep_gpu) {
                     int device_id = rank % num_devices;
@@ -1031,8 +1026,8 @@ void PairPWMLFF::compute(int eflag, int vflag)
         is_build_neighbor,
         n_all, 
         atom->nlocal,
-        list->inum, 
-        nep_gpu_nm, 
+        list->inum,
+        nep_gpu_nm,
         itype_convert_map.data(),
         list->ilist,
         list->numneigh,

@@ -132,38 +132,6 @@ public:
 #endif
   // void set_partition(int n_all, int n_local, int n_ghost, int n_inum);
 
-  void compute_small_box(
-    int n_all, //n_local + nghost
-    int nlocal, 
-    int N, // list->inum
-    int NM,// maxneighbors
-    int* itype,//atoms' type,the len is n_all
-    int* cpu_nn_radail, // the len is N, value is the neighbor nums of atom_i 
-    int* cpu_nl_radail, // the len is N*NM, value is the neighbor list of atom_i 
-    int* cpu_nn_angular,
-    int* cpu_nl_angular,
-    float* cpu_r12,   // the len is N*NM*6, value is the neighbor list of atom_i 
-    double* cpu_potential_per_atom, // the output of ei
-    double* cpu_force_per_atom,     // the output of force
-    double* cpu_total_virial     // the output of virial len 6
-    );
-
-  void compute_small_box_optim(
-    bool is_build_neighbor,
-    int n_all, //n_local + nghost
-    int nlocal,
-    int N, //atom nums
-    int NM,// maxneighbors
-    int* itype_cpu, //atoms' type,the len is [n_all]
-    int* ilist_cpu, // atom i list
-    int* numneigh_cpu, // the neighbor nums of each i, [inum]
-    int* firstneigh_cpu, // the neighbor list of each i, [inum * NM]
-    double* position_cpu, // postion of atoms x, [n_all * 3]
-    double* cpu_potential_per_atom, // the output of ei
-    double* cpu_force_per_atom,     // the output of force
-    double* cpu_total_virial     // the output of virial
-    );
-  
   void compute_large_box_optim(
     bool is_build_neighbor,
     int n_all, //n_local + nghost
@@ -179,7 +147,7 @@ public:
     double* cpu_force_per_atom,     // the output of force
     double* cpu_total_virial     // the output of virial
     );
-
+  bool is_gpumd_nep = false;
   bool has_dftd3 = false;
   bool rank_0 = false;
   int device_id;
