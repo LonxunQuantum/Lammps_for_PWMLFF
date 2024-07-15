@@ -82,6 +82,23 @@ const std::string ELEMENTS[NUM_ELEMENTS] = {
   "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At", "Rn", "Fr", "Ra", "Ac", "Th",
   "Pa", "U",  "Np", "Pu", "Am", "Cm", "Bk", "Cf", "Es", "Fm", "Md", "No", "Lr"};
 
+int countNonEmptyLines(const std::string& filename) {
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "open file error in coutline function: " << filename << std::endl;
+        exit(1);
+    }
+    std::string line;
+    int nonEmptyLineCount = 0;
+    while (std::getline(file, line)) {
+        if (!line.empty()) {
+            nonEmptyLineCount++;
+        }
+    }
+    file.close();
+    return nonEmptyLineCount;
+}
+
 void apply_ann_one_layer(
   const int dim,
   const int num_neurons1,
@@ -2527,6 +2544,8 @@ NEP3_CPU::NEP3_CPU(const std::string& potential_filename) { init_from_file(poten
 
 void NEP3_CPU::init_from_file(const std::string& potential_filename, const bool is_rank_0)
 {
+  int neplinenums = countNonEmptyLines(potential_filename);
+
   std::ifstream input(potential_filename);
   if (!input.is_open()) {
     std::cout << "Failed to open " << potential_filename << std::endl;
@@ -2708,20 +2727,37 @@ void NEP3_CPU::init_from_file(const std::string& potential_filename, const bool 
   paramb.rcinv_radial = 1.0f / paramb.rc_radial;
   paramb.rcinv_angular = 1.0f / paramb.rc_angular;
   paramb.num_types_sq = paramb.num_types * paramb.num_types;
-  annmb.num_para =
-    (annmb.dim + 2) * annmb.num_neurons1 * (paramb.version == 4 ? paramb.num_types : 1) + (paramb.version == 4 ? paramb.num_types : 1);
+
+  annmb.num_c2   = paramb.num_types_sq * (paramb.n_max_radial + 1) * (paramb.basis_size_radial + 1);
+  annmb.num_c3   = paramb.num_types_sq * (paramb.n_max_angular + 1) * (paramb.basis_size_angular + 1);
+  int tmp_nn_params = (annmb.dim + 2) * annmb.num_neurons1 * (paramb.version == 4 ? paramb.num_types : 1);// no last bias
+  int tmp = tmp_nn_params + paramb.num_types + annmb.num_c2 + annmb.num_c3 + 6 + annmb.dim;
+
+  bool is_gpumd_nep = false;
+  if (paramb.num_types == 1) {
+    is_gpumd_nep = false;
+  } else if (neplinenums == tmp) {
+    is_gpumd_nep = false;
+    if (is_rank_0) {
+      printf("    the input nep potential file is from PWMLFF.\n");
+    }
+  } else if (neplinenums  == (tmp -paramb.num_types + 1)) {
+    is_gpumd_nep = true;
+    if (is_rank_0) {
+      printf("    the input nep potential file is from GPUMD.\n");
+    }
+  } else {
+    printf("    parameter parsing error, the number of nep parameters [PWMLFF %d, GPUMD %d] does not match the text lines %d.\n", tmp, (tmp-paramb.num_types+1), neplinenums);
+    exit(1);
+  }
+
+  annmb.num_para = tmp_nn_params + (paramb.version == 4 ? paramb.num_types : 1);
+  // annmb.num_para = (annmb.dim + 2) * annmb.num_neurons1 * (paramb.version == 4 ? paramb.num_types : 1) + (paramb.version == 4 ? paramb.num_types : 1);
+  
   if (paramb.model_type == 2) {
     annmb.num_para *= 2;
   }
-  int num_para_descriptor =
-    paramb.num_types_sq * ((paramb.n_max_radial + 1) * (paramb.basis_size_radial + 1) +
-                           (paramb.n_max_angular + 1) * (paramb.basis_size_angular + 1));
-  if (paramb.version == 2) {
-    num_para_descriptor =
-      (paramb.num_types == 1)
-        ? 0
-        : paramb.num_types_sq * (paramb.n_max_radial + paramb.n_max_angular + 2);
-  }
+  int num_para_descriptor =annmb.num_c2 + annmb.num_c3;
   annmb.num_para += num_para_descriptor;
 
   paramb.num_c_radial =
@@ -2735,8 +2771,15 @@ void NEP3_CPU::init_from_file(const std::string& potential_filename, const bool 
   // NN and descriptor parameters
   parameters.resize(annmb.num_para);
   for (int n = 0; n < annmb.num_para; ++n) {
-    tokens = get_tokens(input);
-    parameters[n] = get_double_from_token(tokens[0], __FILE__, __LINE__);
+    if (is_gpumd_nep == true && (n >= tmp_nn_params + 1) && (n < tmp_nn_params + paramb.num_types)) {
+      parameters[n] = parameters[tmp_nn_params];
+      if (is_rank_0) {
+        printf("copy the last bias parameters[%d]=%f to parameters[%d]=%f \n", tmp_nn_params, parameters[tmp_nn_params], n, parameters[n]);
+      }    
+    } else {
+      tokens = get_tokens(input);
+      parameters[n] = get_double_from_token(tokens[0], __FILE__, __LINE__);
+    }
   }
   update_potential(parameters.data(), annmb);
   for (int d = 0; d < annmb.dim; ++d) {
@@ -2795,10 +2838,21 @@ void NEP3_CPU::init_from_file(const std::string& potential_filename, const bool 
     std::cout << "    l_max_4body = " << (paramb.num_L >= 5 ? 2 : 0) << ".\n";
     std::cout << "    l_max_5body = " << (paramb.num_L >= 6 ? 1 : 0) << ".\n";
     std::cout << "    ANN = " << annmb.dim << "-" << annmb.num_neurons1 << "-1.\n";
-    std::cout << "    number of neural network parameters = "
-              << annmb.num_para - num_para_descriptor << ".\n";
-    std::cout << "    number of descriptor parameters = " << num_para_descriptor << ".\n";
-    std::cout << "    total number of parameters = " << annmb.num_para << ".\n";
+    if (is_gpumd_nep) {
+      std::cout << "    the input nep potential file is from GPUMD.\n";
+      std::cout << "    number of neural network parameters = "
+                << annmb.num_para - num_para_descriptor - paramb.num_types + 1 << ".\n";
+      std::cout << "    number of descriptor parameters = " << num_para_descriptor << ".\n";
+      std::cout << "    total number of parameters = " << annmb.num_para - paramb.num_types + 1 << ".\n";
+
+    } else {
+      std::cout << "    the input nep potential file is from PWMLFF.\n";
+    
+      std::cout << "    number of neural network parameters = "
+                << annmb.num_para - num_para_descriptor << ".\n";
+      std::cout << "    number of descriptor parameters = " << num_para_descriptor << ".\n";
+      std::cout << "    total number of parameters = " << annmb.num_para << ".\n";
+    }
   }
 }
 

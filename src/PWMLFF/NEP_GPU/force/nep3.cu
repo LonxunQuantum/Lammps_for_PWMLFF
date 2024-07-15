@@ -64,6 +64,9 @@ void NEP3::init_from_file(const char* file_potential, const bool is_rank_0, cons
 
   rank_0 = is_rank_0;
   device_id = in_device_id;
+  if (device_id == 0) {
+    print_potential_info = true;
+  }
   atom_nums = 0;
   std::ifstream input(file_potential);
   if (!input.is_open()) {
@@ -86,11 +89,12 @@ void NEP3::init_from_file(const char* file_potential, const bool is_rank_0, cons
               << std::endl;
     exit(1);
   }
-
-  if (paramb.num_types == 1) {
-    printf("Use the NEP%d potential with %d atom type.\n", paramb.version, paramb.num_types);
-  } else {
-    printf("Use the NEP%d potential with %d atom types.\n", paramb.version, paramb.num_types);
+  if (print_potential_info) {
+    if (paramb.num_types == 1) {
+      printf("Use the NEP%d potential with %d atom type.\n", paramb.version, paramb.num_types);
+    } else {
+      printf("Use the NEP%d potential with %d atom types.\n", paramb.version, paramb.num_types);
+    }
   }
   element_atomic_number_list.resize(paramb.num_types);
   for (int n = 0; n < paramb.num_types; ++n) {
@@ -102,7 +106,9 @@ void NEP3::init_from_file(const char* file_potential, const bool is_rank_0, cons
       }
     }
     element_atomic_number_list[n] = atomic_number;
-    printf("    type %d (%s).\n", n, tokens[2 + n].c_str());
+    if (print_potential_info) {
+      printf("    type %d (%s).\n", n, tokens[2 + n].c_str());
+    }
   }
 
   // cutoff 4.2 3.7 80 47
@@ -113,21 +119,26 @@ void NEP3::init_from_file(const char* file_potential, const bool is_rank_0, cons
   }
   paramb.rc_radial = get_float_from_token(tokens[1], __FILE__, __LINE__);
   paramb.rc_angular = get_float_from_token(tokens[2], __FILE__, __LINE__);
-  printf("    radial cutoff = %g A.\n", paramb.rc_radial);
-  printf("    angular cutoff = %g A.\n", paramb.rc_angular);
-
-  paramb.MN_radial = 500;
-  paramb.MN_angular = 100;
+  if (print_potential_info) {
+    printf("    radial cutoff = %g A.\n", paramb.rc_radial);
+    printf("    angular cutoff = %g A.\n", paramb.rc_angular);
+  }
+  paramb.MN_radial = 1000;
+  paramb.MN_angular = 500;
 
   if (tokens.size() == 5) {
     int MN_radial = get_int_from_token(tokens[3], __FILE__, __LINE__);
     int MN_angular = get_int_from_token(tokens[4], __FILE__, __LINE__);
-    printf("    MN_radial = %d.\n", MN_radial);
-    printf("    MN_angular = %d.\n", MN_angular);
+    if (print_potential_info) {
+      printf("    MN_radial = %d.\n", MN_radial);
+      printf("    MN_angular = %d.\n", MN_angular);
+    }
     paramb.MN_radial = int(ceil(MN_radial * 1.25));
     paramb.MN_angular = int(ceil(MN_angular * 1.25));
-    printf("    enlarged MN_radial = %d.\n", paramb.MN_radial);
-    printf("    enlarged MN_angular = %d.\n", paramb.MN_angular);
+    if (print_potential_info) {
+      printf("    enlarged MN_radial = %d.\n", paramb.MN_radial);
+      printf("    enlarged MN_angular = %d.\n", paramb.MN_angular);
+    }
   }
 
   // n_max 10 8
@@ -138,9 +149,10 @@ void NEP3::init_from_file(const char* file_potential, const bool is_rank_0, cons
   }
   paramb.n_max_radial = get_int_from_token(tokens[1], __FILE__, __LINE__);
   paramb.n_max_angular = get_int_from_token(tokens[2], __FILE__, __LINE__);
-  printf("    n_max_radial = %d.\n", paramb.n_max_radial);
-  printf("    n_max_angular = %d.\n", paramb.n_max_angular);
-
+  if (print_potential_info) {
+    printf("    n_max_radial = %d.\n", paramb.n_max_radial);
+    printf("    n_max_angular = %d.\n", paramb.n_max_angular);
+  }
   // basis_size 10 8
   if (paramb.version >= 3) {
     tokens = get_tokens(input);
@@ -151,8 +163,10 @@ void NEP3::init_from_file(const char* file_potential, const bool is_rank_0, cons
     }
     paramb.basis_size_radial = get_int_from_token(tokens[1], __FILE__, __LINE__);
     paramb.basis_size_angular = get_int_from_token(tokens[2], __FILE__, __LINE__);
-    printf("    basis_size_radial = %d.\n", paramb.basis_size_radial);
-    printf("    basis_size_angular = %d.\n", paramb.basis_size_angular);
+    if (print_potential_info) {
+      printf("    basis_size_radial = %d.\n", paramb.basis_size_radial);
+      printf("    basis_size_angular = %d.\n", paramb.basis_size_angular);
+    }
   }
 
   // l_max
@@ -170,14 +184,18 @@ void NEP3::init_from_file(const char* file_potential, const bool is_rank_0, cons
   }
 
   paramb.L_max = get_int_from_token(tokens[1], __FILE__, __LINE__);
-  printf("    l_max_3body = %d.\n", paramb.L_max);
+  if (print_potential_info) {
+    printf("    l_max_3body = %d.\n", paramb.L_max);
+  }
   paramb.num_L = paramb.L_max;
 
   if (paramb.version >= 3) {
     int L_max_4body = get_int_from_token(tokens[2], __FILE__, __LINE__);
     int L_max_5body = get_int_from_token(tokens[3], __FILE__, __LINE__);
-    printf("    l_max_4body = %d.\n", L_max_4body);
-    printf("    l_max_5body = %d.\n", L_max_5body);
+    if (print_potential_info) {
+      printf("    l_max_4body = %d.\n", L_max_4body);
+      printf("    l_max_5body = %d.\n", L_max_5body);
+    }
     if (L_max_4body == 2) {
       paramb.num_L += 1;
     }
@@ -199,8 +217,9 @@ void NEP3::init_from_file(const char* file_potential, const bool is_rank_0, cons
   if (paramb.model_type == 3) {
     annmb.dim += 1;
   }
-  printf("    ANN = %d-%d-1.\n", annmb.dim, annmb.num_neurons1);
-
+  if (print_potential_info) {
+    printf("    ANN = %d-%d-1.\n", annmb.dim, annmb.num_neurons1);
+  }
   // calculated parameters:
   // rc = paramb.rc_radial; // largest cutoff
   paramb.rcinv_radial = 1.0f / paramb.rc_radial;
@@ -217,35 +236,44 @@ void NEP3::init_from_file(const char* file_potential, const bool is_rank_0, cons
     is_gpumd_nep = false;
   } else if (neplinenums == tmp) {
     is_gpumd_nep = false;
-    printf("    the input nep potential file is from PWMLFF.\n");
+    if (print_potential_info) {
+      printf("    the input nep potential file is from PWMLFF.\n");
+    }
   } else if (neplinenums  == (tmp -paramb.num_types + 1)) {
     is_gpumd_nep = true;
-    printf("    the input nep potential file is from GPUMD.\n");
+    if (print_potential_info) {
+      printf("    the input nep potential file is from GPUMD.\n");
+    }
   } else {
     printf("    parameter parsing error, the number of nep parameters [PWMLFF %d, GPUMD %d] does not match the text lines %d.\n", tmp, (tmp-paramb.num_types+1), neplinenums);
     exit(1);
   }
 
   annmb.num_para = tmp_nn_params + (paramb.version == 4 ? paramb.num_types : 1);
-
-  printf("    number of neural network parameters = %d.\n", is_gpumd_nep == false ? annmb.num_para : annmb.num_para-paramb.num_types+1);
+  if (print_potential_info) {
+    printf("    number of neural network parameters = %d.\n", is_gpumd_nep == false ? annmb.num_para : annmb.num_para-paramb.num_types+1);
+  }
   int num_para_descriptor =annmb.num_c2 + annmb.num_c3;
     // paramb.num_types_sq * ((paramb.n_max_radial + 1) * (paramb.basis_size_radial + 1) +
     //                        (paramb.n_max_angular + 1) * (paramb.basis_size_angular + 1));
-
-  printf("    number of descriptor parameters = %d.\n", num_para_descriptor);
+  if (print_potential_info) {
+    printf("    number of descriptor parameters = %d.\n", num_para_descriptor);
+  }
   annmb.num_para += num_para_descriptor;
-  printf("    total number of parameters = %d.\n", is_gpumd_nep == false ? annmb.num_para : annmb.num_para-paramb.num_types+1);
-
+  if (print_potential_info) {
+    printf("    total number of parameters = %d.\n", is_gpumd_nep == false ? annmb.num_para : annmb.num_para-paramb.num_types+1);
+  }
   paramb.num_c_radial =
     paramb.num_types_sq * (paramb.n_max_radial + 1) * (paramb.basis_size_radial + 1);
 
   // NN and descriptor parameters
   std::vector<float> parameters(annmb.num_para);
   for (int n = 0; n < annmb.num_para; ++n) {
-    if (is_gpumd_nep == true and (n >= tmp_nn_params + 1) and (n < tmp_nn_params + paramb.num_types)) {
+    if (is_gpumd_nep == true && (n >= tmp_nn_params + 1) && (n < tmp_nn_params + paramb.num_types)) {
       parameters[n] = parameters[tmp_nn_params];
-      printf("copy the last bias parameters[%d]=%f to parameters[%d]=%f \n", tmp_nn_params, parameters[tmp_nn_params], n, parameters[n]);
+      if (print_potential_info) {
+        printf("copy the last bias parameters[%d]=%f to parameters[%d]=%f \n", tmp_nn_params, parameters[tmp_nn_params], n, parameters[n]);
+      }
     } else {
       tokens = get_tokens(input);
       parameters[n] = get_float_from_token(tokens[0], __FILE__, __LINE__);
@@ -417,7 +445,7 @@ void NEP3::compute_large_box_optim(
   int BLOCK_SIZE = 64;
   int grid_size = (N - 1) / BLOCK_SIZE + 1;
 
-  if (is_build_neighbor) {
+  if (1) {
     lmp_data.type.copy_from_host(itype_cpu);
     lmp_data.ilist.copy_from_host(ilist_cpu);
     lmp_data.numneigh.copy_from_host(numneigh_cpu);
@@ -480,7 +508,7 @@ void NEP3::compute_large_box_optim(
   // cudaDeviceSynchronize();
   // nep_data.potential_per_atom.copy_to_host(cpu_potential_per_atom);
   // printf("find_descriptor ei[10]=%f\n",cpu_potential_per_atom[10]);
-
+  
   // // bool is_dipole = paramb.model_type == 1;
   find_force_radial_large_box<<<grid_size, BLOCK_SIZE>>>(
     paramb,
@@ -511,9 +539,9 @@ void NEP3::compute_large_box_optim(
   // // nep_data.potential_per_atom.copy_to_host(cpu_potential_per_atom);
   // nep_data.force_per_atom.copy_to_host(cpu_force_per_atom);
   // for (int ii = 0; ii < N; ii++) {
-  //   if (ii % 1000 == 0){
-  //     printf("radial force[%d]=%f\n", ii, cpu_force_per_atom[ii]);
-  //   }
+    //   if (ii % 1000 == 0){
+      //     printf("radial force[%d]=%f\n", ii, cpu_force_per_atom[ii]);
+    //   }
   // }
   // std::vector<double> tmp_viral(atom_nums_all * 9);
   // nep_data.virial_per_atom.copy_to_host(tmp_viral.data());
@@ -565,9 +593,9 @@ void NEP3::compute_large_box_optim(
   // std::vector<float> tmp_f12x(atom_nums * paramb.MN_angular);
   // nep_data.f12x.copy_to_host(tmp_f12x.data());
   // for (int ii = 0; ii < N; ii++) {
-  //   if (ii % 1000 == 0){
-  //     printf("partial tmp_f12x[%d]=%f\n", ii, tmp_f12x[ii]);
-  //   }
+    //   if (ii % 1000 == 0){
+      //     printf("partial tmp_f12x[%d]=%f\n", ii, tmp_f12x[ii]);
+    //   }
   // }
 
   gpu_find_force_many_body<<<grid_size, BLOCK_SIZE>>>(
@@ -593,9 +621,9 @@ void NEP3::compute_large_box_optim(
   // // nep_data.potential_per_atom.copy_to_host(cpu_potential_per_atom);
   // nep_data.force_per_atom.copy_to_host(cpu_force_per_atom);
   // for (int ii = 0; ii < N; ii++) {
-  //   if (ii % 1000 == 0){
-  //     printf("many_body force[%d]=%f\n", ii, cpu_force_per_atom[ii]);
-  //   }
+    //   if (ii % 1000 == 0){
+      //     printf("many_body force[%d]=%f\n", ii, cpu_force_per_atom[ii]);
+    //   }
   // }
   // cudaDeviceSynchronize();
   // nep_data.potential_per_atom.copy_to_host(cpu_potential_per_atom);

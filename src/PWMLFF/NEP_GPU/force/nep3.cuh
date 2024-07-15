@@ -151,4 +151,5 @@ public:
   bool has_dftd3 = false;
   bool rank_0 = false;
   int device_id;
+  bool print_potential_info = false;
 };

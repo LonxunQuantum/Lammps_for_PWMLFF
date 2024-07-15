@@ -64,11 +64,11 @@ static __global__ void find_neighbor_list_large_box(
 
       if (distance_square < paramb.rc_radial * paramb.rc_radial) {
         g_NL_radial[ count_radial * N + n1] = n2;
-        count_radial++;
+                count_radial++;
       }
       if (distance_square < paramb.rc_angular * paramb.rc_angular) {
         g_NL_angular[count_angular * N + n1] = n2;
-        count_angular++;
+                count_angular++;
       }
     } //for
     g_NN_radial[n1] = count_radial;
@@ -110,6 +110,7 @@ static __global__ void find_descriptor_large_box(
     // get radial descriptors
     for (int i1 = 0; i1 < g_NN_radial[n1]; ++i1) {
       int n2 = g_NL_radial[i1 * N + n1];
+      int t2 = g_type[n2];
       double x12double = g_x[n2] - x1;
       double y12double = g_y[n2] - y1;
       double z12double = g_z[n2] - z1;
@@ -134,7 +135,6 @@ static __global__ void find_descriptor_large_box(
 #else
       float fc12;
       find_fc(paramb.rc_radial, paramb.rcinv_radial, d12, fc12);
-      int t2 = g_type[n2];
       float fn12[MAX_NUM_N];
       if (paramb.version == 2) {
         find_fn(paramb.n_max_radial, paramb.rcinv_radial, d12, fc12, fn12);
@@ -226,7 +226,6 @@ static __global__ void find_descriptor_large_box(
     for (int d = 0; d < annmb.dim; ++d) {
       q[d] = q[d] * paramb.q_scaler[d];
     }
-
     // get energy and energy gradient
     float F = 0.0f, Fp[MAX_DIM] = {0.0f};
 

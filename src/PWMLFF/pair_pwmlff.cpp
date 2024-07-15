@@ -106,8 +106,8 @@ void PairPWMLFF::settings(int narg, char** arg)
     device = device_type == torch::kCUDA ?  torch::Device(device_type, rank % num_devices) : torch::Device(device_type);
     dtype = torch::kFloat64;
 
-    std::cout<<"the numbor of gpu is " <<  num_devices << std::endl;
-    std::cout<<"the mpi process is " << comm->nprocs << std::endl;
+    // std::cout<<"the numbor of gpu is " <<  num_devices << std::endl;
+    // std::cout<<"the mpi process is " << comm->nprocs << std::endl;
     
     if (me == 0) utils::logmesg(this -> lmp, "<---- Loading model ---->");
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
@@ -142,7 +142,9 @@ void PairPWMLFF::settings(int narg, char** arg)
                     cudaSetDevice(device_id);
                     nep_gpu_model.init_from_file(model_file.c_str(), is_rank_0, device_id);
                     model_type = 2;
-                    printf("MPI rank %d rank using GPU device %d\n", rank, device_id);
+                    if (device_id == 0) {
+                        printf("MPI rank %d rank using GPU device %d\n", rank, device_id);
+                    }
                     // std::cout<<"load nep.txt success and the model type is 2" << std::endl;
                 } else {
                     nep_cpu_model.init_from_file(model_file, is_rank_0);
