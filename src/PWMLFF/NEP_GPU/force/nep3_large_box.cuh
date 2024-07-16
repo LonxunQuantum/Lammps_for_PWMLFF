@@ -729,3 +729,24 @@ static __global__ void gpu_sort_neighbor_list(const int N, const int* NN, int* N
     NL[bid + count * N] = atom_index;
   }
 }
+
+// __global__ void compare_arrays(int *array1, int *array2, int *result, int N) {
+//     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+//     __shared__ bool mismatch;
+
+//     if (threadIdx.x == 0) {
+//         mismatch = false;
+//     }
+//     __syncthreads();
+
+//     if (idx < N) {
+//         if (array1[idx] != array2[idx]) {
+//             mismatch = true;
+//         }
+//     }
+//     __syncthreads();
+
+//     if (threadIdx.x == 0) {
+//         result[0] = mismatch;
+//     }
+// }

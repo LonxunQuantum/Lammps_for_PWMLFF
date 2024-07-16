@@ -123,8 +123,8 @@ void NEP3::init_from_file(const char* file_potential, const bool is_rank_0, cons
     printf("    radial cutoff = %g A.\n", paramb.rc_radial);
     printf("    angular cutoff = %g A.\n", paramb.rc_angular);
   }
-  paramb.MN_radial = 1000;
-  paramb.MN_angular = 500;
+  paramb.MN_radial = 500;
+  paramb.MN_angular = 100;
 
   if (tokens.size() == 5) {
     int MN_radial = get_int_from_token(tokens[3], __FILE__, __LINE__);
@@ -315,7 +315,7 @@ void NEP3::checkMemoryUsage(int sgin) {
   // }
 }
 
-void NEP3::rest_nep_data(int input_atom_num, int n_local, int n_all, int max_neighbor, bool build_neighbor, bool large_box) {
+void NEP3::rest_nep_data(int input_atom_num, int n_local, int n_all, int max_neighbor) {
   // printf("(build neighbor %d) (atom_nums %d change %d) (atom_local %d change %d) (atom_nums_all %d change %d)\n", build_neighbor, input_atom_num, (atom_nums != input_atom_num), n_local, (atom_nlocal != n_local), n_all, (atom_nums_all != n_all));
   if (atom_nums != input_atom_num) {
     atom_nums = input_atom_num;
@@ -327,14 +327,10 @@ void NEP3::rest_nep_data(int input_atom_num, int n_local, int n_all, int max_nei
     lmp_data.ilist.resize(atom_nums);
     lmp_data.numneigh.resize(atom_nums);
     lmp_data.firstneigh.resize(atom_nums*max_neighbor);
-    if (large_box == false) {
-      lmp_data.r12.resize(atom_nums * max_neighbor*6);
-    } 
-    else { 
-      nep_data.f12x.resize(atom_nums * paramb.MN_angular);
-      nep_data.f12y.resize(atom_nums * paramb.MN_angular);
-      nep_data.f12z.resize(atom_nums * paramb.MN_angular);
-    }
+    
+    nep_data.f12x.resize(atom_nums * paramb.MN_angular);
+    nep_data.f12y.resize(atom_nums * paramb.MN_angular);
+    nep_data.f12z.resize(atom_nums * paramb.MN_angular);
   }
 
   if (atom_nlocal != n_local) {
@@ -351,6 +347,7 @@ void NEP3::rest_nep_data(int input_atom_num, int n_local, int n_all, int max_nei
     lmp_data.type.resize(atom_nums_all);
     lmp_data.position.resize(atom_nums_all*3);
   }
+
   nep_data.potential_per_atom.fill(0.0);
   nep_data.force_per_atom.fill(0.0);
   nep_data.virial_per_atom.fill(0.0);
@@ -439,19 +436,21 @@ void NEP3::compute_large_box_optim(
 ) {
   nlocal = N;
   int N1 = 0;
-  // checkMemoryUsage(0);
-  rest_nep_data(N, nlocal, n_all, NM, is_build_neighbor, true);
-
   int BLOCK_SIZE = 64;
-  int grid_size = (N - 1) / BLOCK_SIZE + 1;
+  int grid_size = (N- 1) / BLOCK_SIZE + 1;
 
-  if (1) {
+  // checkMemoryUsage(0);
+
+  rest_nep_data(N, nlocal, n_all, NM);
+
+  if (is_build_neighbor) {
     lmp_data.type.copy_from_host(itype_cpu);
     lmp_data.ilist.copy_from_host(ilist_cpu);
     lmp_data.numneigh.copy_from_host(numneigh_cpu);
     lmp_data.firstneigh.copy_from_host(firstneigh_cpu);
     // checkMemoryUsage(2);
   }
+  
   lmp_data.position.copy_from_host(position_cpu);
   
   find_neighbor_list_large_box<<<grid_size, BLOCK_SIZE>>>(

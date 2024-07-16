@@ -124,7 +124,7 @@ public:
 
   void update_potential(float* parameters, ANN& ann);
   // void update_potential_from_cpu(std::vector<float> parameters, ANN& ann);
-  void rest_nep_data(int max_atom_nums, int n_local, int n_all, int max_neighbor, bool build_neighbor, bool large_box=false);
+  void rest_nep_data(int max_atom_nums, int n_local, int n_all, int max_neighbor);
 
   void checkMemoryUsage(int sgin=0);
 #ifdef USE_TABLE

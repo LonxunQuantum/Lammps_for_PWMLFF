@@ -654,26 +654,33 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<double>>PairPWMLFF::c
     int n_all = nlocal + nghost;
     int *itype, *numneigh, **firstneigh;
     int ii, jj, inum, jnum;
-    
     inum = list->inum;
     itype = atom->type;
     numneigh = list->numneigh;
     firstneigh = list->firstneigh;
     double **x = atom->x;
-    itype_convert_map.assign(n_all, -1);
-    position_cpu.assign(n_all*3, 0);
-    firstneighbor_cpu.assign(inum * nep_gpu_nm, 0);
-
-    for(ii=0; ii < n_all;ii++) {
-        itype_convert_map[ii] = model_atom_type_idx[itype[ii] - 1];
-        position_cpu[ii] = x[ii][0];
-        position_cpu[  n_all+ii] = x[ii][1];
-        position_cpu[2*n_all+ii] = x[ii][2];
-        if (ii < inum){
-            jnum = numneigh[ii];
-            for(jj=0; jj < jnum; ++jj){
-                firstneighbor_cpu[ii*nep_gpu_nm + jj] = firstneigh[ii][jj];
+    if (is_build_neighbor) {
+        itype_convert_map.assign(n_all, -1);
+        position_cpu.assign(n_all*3, 0);
+        firstneighbor_cpu.assign(inum * nep_gpu_nm, 0);
+        for(ii=0; ii < n_all;ii++) {
+            itype_convert_map[ii] = model_atom_type_idx[itype[ii] - 1];
+            position_cpu[ii] = x[ii][0];
+            position_cpu[  n_all+ii] = x[ii][1];
+            position_cpu[2*n_all+ii] = x[ii][2];
+            if (ii < inum){
+                jnum = numneigh[ii];
+                for(jj=0; jj < jnum; ++jj){
+                    firstneighbor_cpu[ii*nep_gpu_nm + jj] = firstneigh[ii][jj];
+                }
             }
+        }
+    } else {
+        position_cpu.assign(n_all*3, 0);
+        for(ii=0; ii < n_all;ii++) {
+            position_cpu[ii] = x[ii][0];
+            position_cpu[  n_all+ii] = x[ii][1];
+            position_cpu[2*n_all+ii] = x[ii][2];            
         }
     }
     return std::make_tuple(std::move(itype_convert_map), std::move(firstneighbor_cpu), std::move(position_cpu));
@@ -788,8 +795,26 @@ void PairPWMLFF::compute(int eflag, int vflag)
     int nghost = atom->nghost;
     int n_all = nlocal + nghost;
     // int inum, jnum, itype, jtype;
+    bool is_build_neighbor = false;
     double max_err, global_max_err, max_err_ei, global_max_err_ei;
-    bool is_build_neighbor = (current_timestep % neighbor->every == 0);
+
+    is_build_neighbor = (current_timestep % neighbor->every == 0);
+
+    if (pre_nlocal != nlocal or pre_nghost != nghost) {
+        is_build_neighbor = true;
+        // printf("1 rank %d local atom %d pre_local %d ghost %d pre_ghost %d is_build_neighbor %d\n",rank, nlocal, pre_nlocal, nghost, pre_nghost, is_build_neighbor);
+        pre_nlocal = nlocal;
+        pre_nghost = nghost;
+    }
+    int global_flag;
+    int local_flag = is_build_neighbor ? 1 : 0;
+    MPI_Allreduce(&local_flag, &global_flag, 1, MPI_INT, MPI_LOR, world);
+    is_build_neighbor = global_flag ? true : false;
+
+    if (current_timestep % neighbor->every == 0) {
+        is_build_neighbor = true;
+    }
+
     // for dp and nep model from jitscript
     if (model_type == 0) {
 
@@ -816,7 +841,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
         torch::Tensor neighbor_list_tensor = torch::from_blob(neighbor_list.data(), {1, inum, max_neighbor * model_ntypes}, int_tensor_options).to(device);
         torch::Tensor dR_neigh_tensor = torch::from_blob(dR_neigh.data(), {1, inum, max_neighbor * model_ntypes, 4}, float_tensor_options).to(device,dtype);
         torch::Tensor atom_type_tensor = torch::from_blob(atom_types.data(), {ntypes}, int_tensor_options).to(device);
-            
+        
         torch::Tensor neighbor_type_list_tensor;
         if (model_name == "NEP") {
             // std::cout<< "=========do neighbor_type_list to tensor ==========="<<std::endl;
@@ -1007,23 +1032,15 @@ void PairPWMLFF::compute(int eflag, int vflag)
         // nep_gpu_model.compute_small_box(
         // n_all, atom->nlocal, list->inum, nep_gpu_nm, itype_convert_map.data(), neigbor_num_list.data(), neighbor_list.data(), neigbor_angular_num_list.data(), neighbor_angular_list.data(), rij_nep_gpu.data(), 
         // cpu_potential_per_atom.data(), cpu_force_per_atom.data(), cpu_total_virial.data());
-
+       
+        // 记录 convert_dim 函数的开始时间
+        // auto start_convert_dim = std::chrono::high_resolution_clock::now();
         std::tie(itype_convert_map, firstneighbor_cpu, position_cpu) = convert_dim(is_build_neighbor);
-        // nep_gpu_model.compute_small_box_optim(
-        // is_build_neighbor,
-        // n_all, 
-        // atom->nlocal,
-        // list->inum, 
-        // nep_gpu_nm, 
-        // itype_convert_map.data(),
-        // list->ilist,
-        // list->numneigh,
-        // firstneighbor_cpu.data(),
-        // position_cpu.data(),
-        // cpu_potential_per_atom.data(), 
-        // cpu_force_per_atom.data(), 
-        // cpu_total_virial.data());
-
+        // 记录 convert_dim 函数的结束时间
+        // auto end_convert_dim = std::chrono::high_resolution_clock::now();
+        // auto duration_convert_dim = std::chrono::duration_cast<std::chrono::microseconds>(end_convert_dim - start_convert_dim).count();
+        
+        // auto start_compute_large_box_optim = std::chrono::high_resolution_clock::now();
         nep_gpu_model.compute_large_box_optim(
         is_build_neighbor,
         n_all, 
@@ -1038,7 +1055,13 @@ void PairPWMLFF::compute(int eflag, int vflag)
         cpu_potential_per_atom.data(), 
         cpu_force_per_atom.data(), 
         cpu_total_virial.data());
+        // auto end_compute_large_box_optim = std::chrono::high_resolution_clock::now();
+        // auto duration_compute_large_box_optim = std::chrono::duration_cast<std::chrono::microseconds>(end_compute_large_box_optim - start_compute_large_box_optim).count();
 
+        // if (comm->me == 0) {
+        //     std::cout << "build %d " << is_build_neighbor << "convert_dim function took " << duration_convert_dim << " microseconds." << std::endl;
+        //     std::cout << "build %d " << is_build_neighbor << "compute_large_box_optim function took " << duration_compute_large_box_optim << " microseconds." << std::endl;
+        // }
 
         // for(int tmpi=0;tmpi< 10;tmpi++) {
         //     printf("after ei [%d] = %f", tmpi, cpu_potential_per_atom[tmpi]);

@@ -93,6 +93,12 @@ namespace LAMMPS_NS {
 
             std::vector<double> position_cpu; // for nep gpu optim
             std::vector<int>   firstneighbor_cpu; // for nep gpu optim
+
+            std::vector<int> pre_itype; // the previous step atom types (local and ghost)
+            int pre_nall = 0; // the previous step atom nums (local + ghost)
+            int pre_nlocal = 0;
+            int pre_nghost = 0;
+            bool change_neighbor = false;
     };
 }
 #endif
