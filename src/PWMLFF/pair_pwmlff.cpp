@@ -526,7 +526,7 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::
 
     MPI_Allreduce(&min_dR, &min_dR_all, 1, MPI_DOUBLE, MPI_MIN, world);
 
-    if (min_dR_all < 0.81) {
+    if (min_dR_all < 0.61) {
         if (me == 0) {
             std::cout << "ERROR: there are two atoms too close, min_dR_all = " << min_dR_all << std::endl;
         }
@@ -638,7 +638,7 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<dou
 
     MPI_Allreduce(&min_dR, &min_dR_all, 1, MPI_DOUBLE, MPI_MIN, world);
 
-    if (min_dR_all < 0.81) {
+    if (min_dR_all < 0.61) {
         if (me == 0) {
             std::cout << "ERROR: there are two atoms too close, min_dR_all = " << min_dR_all << std::endl;
         }
@@ -770,7 +770,7 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int
 
     MPI_Allreduce(&min_dR, &min_dR_all, 1, MPI_DOUBLE, MPI_MIN, world);
 
-    if (min_dR_all < 0.81) {
+    if (min_dR_all < 0.61) {
         if (me == 0) {
             std::cout << "ERROR: there are two atoms too close, min_dR_all = " << min_dR_all << std::endl;
         }
