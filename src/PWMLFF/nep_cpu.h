@@ -1,6 +1,17 @@
 /*
+List of modified records by Wu Xingxing (email stars_sparkling@163.com)
+1. Added network structure support for NEP4 model independent bias
+    Modified force field reading;
+    Modified the applyann_one_layer method;
+2. Added handling of inconsistency between the atomic order of the input structure of LAMMPS and the atomic order in the force field
+3. In order to adapt to multiple model biases, the function has been added with computefor_lamps() and the int model_index parameter has been added  
 
-this code from https://github.com/brucefan1983/NEP_CPU
+We have made the following improvements based on NEP4
+http://doc.lonxun.com/PWMLFF/models/nep/NEP%20model/
+*/
+
+/*
+the open source code from https://github.com/brucefan1983/NEP_CPU
 the licnese of NEP_CPU is as follows:
     Copyright 2022 Zheyong Fan, Junjie Wang, Eric Lindgren
     This file is part of NEP_CPU.
@@ -14,24 +25,13 @@ the licnese of NEP_CPU is as follows:
     GNU General Public License for more details.
     You should have received a copy of the GNU General Public License
     along with NEP_CPU.  If not, see <http://www.gnu.org/licenses/>.
-
-List of modified records by Wu Xingxing (email stars_sparkling@163.com)
-1. Added network structure support for NEP4 model independent bias
-    Modified force field reading;
-    Modified the applyann_one_layer method;
-2. Added handling of inconsistency between the atomic order of the input structure of LAMMPS and the atomic order in the force field
-3. In order to adapt to multiple model biases, the function has been added with computefor_lamps() and the int model_index parameter has been added  
 */
 
 /*----------------------------------------------------------------------------80
-For more information on NEP4, refer to
-Zheyong Fan et al., Neuroevolution machine learning potentials:
+A CPU implementation of the neuroevolution potential (NEP)
+Ref: Zheyong Fan et al., Neuroevolution machine learning potentials:
 Combining high accuracy and low cost in atomistic simulations and application to
 heat transport, Phys. Rev. B. 104, 104309 (2021).
-
-We have made the following improvements based on NEP4
-http://doc.lonxun.com/PWMLFF/models/nep/NEP%20model/
-
 ------------------------------------------------------------------------------*/
 
 #pragma once

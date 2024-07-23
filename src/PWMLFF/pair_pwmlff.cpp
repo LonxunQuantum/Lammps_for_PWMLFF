@@ -952,12 +952,12 @@ void PairPWMLFF::compute(int eflag, int vflag)
         }
         for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
             if ((num_ff == 1) or (current_timestep % out_freq != 0)) {
-                                // can not set the atom->type (the type set in config) to nep forcefild order, because the ghost atoms type same as the conifg
+                // can not set the atom->type (the type set in config) to nep forcefild order, because the ghost atoms type same as the conifg
                 // The atomic types corresponding to the index of neighbors are constantly changing
                 nep_cpu_models[ff_idx].compute_for_lammps(
                 atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh, atom->type, atom->x,
                 total_potential, total_virial, per_atom_potential, atom->f, per_atom_virial, ff_idx);
-                                if (eflag) {
+                if (eflag) {
                     eng_vdwl += total_potential;
                 }
                 if (vflag) {

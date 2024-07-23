@@ -1,7 +1,17 @@
 /*
+List of modified records by Wu Xingxing (email stars_sparkling@163.com)
+1. Added network structure support for NEP4 model independent bias
+    Modified force field reading;
+    Modified the applyann_one_layer method;
+2. Added handling of inconsistency between the atomic order of the input structure of LAMMPS and the atomic order in the force field
+3. In order to adapt to multiple model biases, the function has been added with computefor_lamps() and the int model_index parameter has been added  
 
-this code from https://github.com/brucefan1983/NEP_CPU
+We have made the following improvements based on NEP4
+http://doc.lonxun.com/PWMLFF/models/nep/NEP%20model/
+*/
 
+/*
+the open source code from https://github.com/brucefan1983/NEP_CPU
 the licnese of NEP_CPU is as follows:
     Copyright 2022 Zheyong Fan, Junjie Wang, Eric Lindgren
     This file is part of NEP_CPU.
@@ -15,24 +25,13 @@ the licnese of NEP_CPU is as follows:
     GNU General Public License for more details.
     You should have received a copy of the GNU General Public License
     along with NEP_CPU.  If not, see <http://www.gnu.org/licenses/>.
-
-List of modified records by Wu Xingxing (email stars_sparkling@163.com)
-1. Added network structure support for NEP4 model independent bias
-    Modified force field reading;
-    Modified the applyann_one_layer method;
-2. Added handling of inconsistency between the atomic order of the input structure of LAMMPS and the atomic order in the force field
-3. In order to adapt to multiple model biases, the function has been added with computefor_lamps() and the int model_index parameter has been added  
 */
 
 /*----------------------------------------------------------------------------80
-For more information on NEP4, refer to
-Zheyong Fan et al., Neuroevolution machine learning potentials:
+A CPU implementation of the neuroevolution potential (NEP)
+Ref: Zheyong Fan et al., Neuroevolution machine learning potentials:
 Combining high accuracy and low cost in atomistic simulations and application to
 heat transport, Phys. Rev. B. 104, 104309 (2021).
-
-We have made the following improvements based on NEP4
-http://doc.lonxun.com/PWMLFF/models/nep/NEP%20model/
-
 ------------------------------------------------------------------------------*/
 
 #include "nep_cpu.h"
@@ -2733,6 +2732,14 @@ void NEP3_CPU::init_from_file(const std::string& potential_filename, const bool 
   int tmp_nn_params = (annmb.dim + 2) * annmb.num_neurons1 * (paramb.version == 4 ? paramb.num_types : 1);// no last bias
   int tmp = tmp_nn_params + paramb.num_types + annmb.num_c2 + annmb.num_c3 + 6 + annmb.dim;
 
+  int num_type_zbl = 0;
+  if (zbl.enabled && zbl.flexibled) {
+    num_type_zbl = (paramb.num_types * (paramb.num_types + 1)) / 2;
+    neplinenums -= (1 + 10*num_type_zbl);// zbl 0 0; fixed zbl
+  } else if (zbl.enabled) {
+    neplinenums  -= 1; // zbl a b
+  }
+
   bool is_gpumd_nep = false;
   if (paramb.num_types == 1) {
     is_gpumd_nep = false;
@@ -2789,7 +2796,7 @@ void NEP3_CPU::init_from_file(const std::string& potential_filename, const bool 
 
   // flexible zbl potential parameters if (zbl.flexibled)
   if (zbl.flexibled) {
-    int num_type_zbl = (paramb.num_types * (paramb.num_types + 1)) / 2;
+    // int num_type_zbl = (paramb.num_types * (paramb.num_types + 1)) / 2;
     for (int d = 0; d < 10 * num_type_zbl; ++d) {
       tokens = get_tokens(input);
       zbl.para[d] = get_double_from_token(tokens[0], __FILE__, __LINE__);
@@ -3454,6 +3461,9 @@ void NEP3_CPU::set_dftd3_para_all(
   valid = valid || set_dftd3_para_one(functional, "tpssh", 1.000, 0.4529, 2.2382, 4.6550);
   valid = valid || set_dftd3_para_one(functional, "b2kplyp", 0.64, 0.0000, 0.1521, 7.1916);
   valid = valid || set_dftd3_para_one(functional, "dsd-pbep86", 0.418, 0.0000, 0.0000, 5.6500);
+  valid = valid || set_dftd3_para_one(functional, "b97m", 1.0000, -0.0780, 0.1384, 5.5946);
+  valid = valid || set_dftd3_para_one(functional, "wb97x", 1.0000, 0.0000, 0.2641, 5.4959);
+  valid = valid || set_dftd3_para_one(functional, "wb97m", 1.0000, 0.5660, 0.3908, 3.1280);
 
   if (!valid) {
     std::cout << "The " << functional
