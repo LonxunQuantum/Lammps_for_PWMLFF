@@ -1,4 +1,16 @@
 /*
+This code is developed based on the GPUMD source code and adds ghost atom processing in LAMMPS. 
+  Support multi GPUs.
+  Support GPUMD NEP shared bias and PWMLFF NEP independent bias forcefield.
+
+We have made the following improvements based on NEP4
+http://doc.lonxun.com/PWMLFF/models/nep/NEP%20model/
+*/
+
+/*
+    the open source code from https://github.com/brucefan1983/GPUMD
+    the licnese of NEP_CPU is as follows:
+
     Copyright 2017 Zheyong Fan, Ville Vierimaa, Mikko Ervasti, and Ari Harju
     This file is part of GPUMD.
     GPUMD is free software: you can redistribute it and/or modify
@@ -102,6 +114,17 @@ public:
     const float* w1_pol[10];
     const float* b1_pol;
   };
+
+  struct ZBL {
+    bool enabled = false;
+    bool flexibled = false;
+    float rc_inner = 1.0f;
+    float rc_outer = 2.0f;
+    float para[550];
+    float atomic_numbers[NUM_ELEMENTS];
+    int num_types;
+  };
+
   NEP3();
   void init_from_file(const char* file_potential, const bool is_rank_0, const int in_device_id);
 
@@ -114,6 +137,7 @@ public:
 
   ParaMB paramb;
   ANN annmb;
+  ZBL zbl;
   NEP3_Data nep_data;
   LMP_Data lmp_data;
   std::vector<int> map_atom_type_idx;

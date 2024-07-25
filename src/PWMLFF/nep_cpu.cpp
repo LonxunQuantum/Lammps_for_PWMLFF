@@ -5,6 +5,7 @@ List of modified records by Wu Xingxing (email stars_sparkling@163.com)
     Modified the applyann_one_layer method;
 2. Added handling of inconsistency between the atomic order of the input structure of LAMMPS and the atomic order in the force field
 3. In order to adapt to multiple model biases, the function has been added with computefor_lamps() and the int model_index parameter has been added  
+4. Support GPUMD NEP shared bias and PWMLFF NEP independent bias forcefield
 
 We have made the following improvements based on NEP4
 http://doc.lonxun.com/PWMLFF/models/nep/NEP%20model/
@@ -2035,6 +2036,7 @@ void find_force_angular_for_lammps(
 }
 
 void find_force_ZBL_for_lammps(
+  NEP3_CPU::ParaMB& paramb,
   const NEP3_CPU::ZBL& zbl,
   int N,
   int* g_ilist,
@@ -2060,12 +2062,15 @@ void find_force_ZBL_for_lammps(
         g_pos[n2][0] - g_pos[n1][0], g_pos[n2][1] - g_pos[n1][1], g_pos[n2][2] - g_pos[n1][2]};
 
       double d12sq = r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2];
-      double max_rc_outer = 2.5;
-      if (d12sq >= max_rc_outer * max_rc_outer) {
+      // double max_rc_outer = 2.5;
+      // if (d12sq >= max_rc_outer * max_rc_outer) {
+      //   continue;
+      // }
+      if (d12sq >= paramb.rc_angular * paramb.rc_angular) {
         continue;
       }
-      double d12 = sqrt(d12sq);
 
+      double d12 = sqrt(d12sq);
       double d12inv = 1.0 / d12;
       double f, fp;
       int type2 = map_atom_type_idx[g_type[n2] - 1];
@@ -2117,6 +2122,7 @@ void find_force_ZBL_for_lammps(
         g_virial[n2][8] -= r12[2] * f12[1]; // zy
       }
       g_total_potential += f * 0.5; // always calculate this
+      // printf("zbl n1 %d n2 %d d12 %f e_c_half %f\n", n1, n2, d12, f);
       if (g_potential) {            // only calculate when required
         g_potential[n1] += f * 0.5;
       }
@@ -3359,7 +3365,8 @@ void NEP3_CPU::compute_for_lammps(
     gn_radial.data(), gn_angular.data(),
 #endif
     Fp.data(), sum_fxyz.data(), total_potential, potential);
-  find_force_radial_for_lammps(
+
+  find_force_radial_for_lammps( 
     paramb, annmb, nlocal, N, ilist, NN, NL, type, map_atom_type_idx, pos, Fp.data(),
 #ifdef USE_TABLE_FOR_RADIAL_FUNCTIONS
     gnp_radial.data(),
@@ -3373,7 +3380,7 @@ void NEP3_CPU::compute_for_lammps(
     force, total_virial, virial);
   if (zbl.enabled) {
     find_force_ZBL_for_lammps(
-      zbl, N, ilist, NN, NL, type, map_atom_type_idx,  pos, force, total_virial, virial, total_potential, potential);
+      paramb, zbl, N, ilist, NN, NL, type, map_atom_type_idx,  pos, force, total_virial, virial, total_potential, potential);
   }
 }
 

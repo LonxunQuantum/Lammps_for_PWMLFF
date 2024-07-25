@@ -1,4 +1,16 @@
 /*
+This code is developed based on the GPUMD source code and adds ghost atom processing in LAMMPS. 
+  Support multi GPUs.
+  Support GPUMD NEP shared bias and PWMLFF NEP independent bias forcefield.
+
+We have made the following improvements based on NEP4
+http://doc.lonxun.com/PWMLFF/models/nep/NEP%20model/
+*/
+
+/*
+    the open source code from https://github.com/brucefan1983/GPUMD
+    the licnese of NEP_CPU is as follows:
+
     Copyright 2017 Zheyong Fan, Ville Vierimaa, Mikko Ervasti, and Ari Harju
     This file is part of GPUMD.
     GPUMD is free software: you can redistribute it and/or modify
@@ -750,3 +762,129 @@ static __global__ void gpu_sort_neighbor_list(const int N, const int* NN, int* N
 //         result[0] = mismatch;
 //     }
 // }
+
+static __global__ void find_force_ZBL(
+  const NEP3::ZBL zbl,
+  const int nall, //all atoms
+  const int N,
+  const int N1,
+  const int nlocal,
+  const int* g_NN,
+  const int* g_NL,
+  const int* __restrict__ g_type,
+  const double* __restrict__ g_x,
+  const double* __restrict__ g_y,
+  const double* __restrict__ g_z,
+  double* g_fx,
+  double* g_fy,
+  double* g_fz,
+  double* g_virial,
+  double* g_pe)
+{
+  int n1 = blockIdx.x * blockDim.x + threadIdx.x + N1;
+  if (n1 < N) {
+    float s_pe = 0.0f;
+    float s_fx = 0.0f;
+    float s_fy = 0.0f;
+    float s_fz = 0.0f;
+    float s_sxx = 0.0f;
+    float s_sxy = 0.0f;
+    float s_sxz = 0.0f;
+    float s_syx = 0.0f;
+    float s_syy = 0.0f;
+    float s_syz = 0.0f;
+    float s_szx = 0.0f;
+    float s_szy = 0.0f;
+    float s_szz = 0.0f;
+    double x1 = g_x[n1];
+    double y1 = g_y[n1];
+    double z1 = g_z[n1];
+    int type1 = g_type[n1];
+    float zi = zbl.atomic_numbers[type1];
+    float pow_zi = pow(zi, 0.23f);
+    for (int i1 = 0; i1 < g_NN[n1]; ++i1) {
+      int n2 = g_NL[n1 + N * i1];
+      int type2 = g_type[n2];
+      double x12double = g_x[n2] - x1;
+      double y12double = g_y[n2] - y1;
+      double z12double = g_z[n2] - z1;
+      float r12[3] = {float(x12double), float(y12double), float(z12double)};
+      float d12 = sqrt(r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2]);
+      float d12inv = 1.0f / d12;
+      float f, fp;
+      float zj = zbl.atomic_numbers[type2];
+      float a_inv = (pow_zi + pow(zj, 0.23f)) * 2.134563f;
+      float zizj = K_C_SP * zi * zj;
+      if (zbl.flexibled) {
+        int t1, t2;
+        if (type1 < type2) {
+          t1 = type1;
+          t2 = type2;
+        } else {
+          t1 = type2;
+          t2 = type1;
+        }
+        int zbl_index = t1 * zbl.num_types - (t1 * (t1 - 1)) / 2 + (t2 - t1);
+        float ZBL_para[10];
+        for (int i = 0; i < 10; ++i) {
+          ZBL_para[i] = zbl.para[10 * zbl_index + i];
+        }
+        find_f_and_fp_zbl(ZBL_para, zizj, a_inv, d12, d12inv, f, fp);
+      } else {
+        find_f_and_fp_zbl(zizj, a_inv, zbl.rc_inner, zbl.rc_outer, d12, d12inv, f, fp);
+      }
+      float f2 = fp * d12inv * 0.5f;
+      float f12[3] = {r12[0] * f2, r12[1] * f2, r12[2] * f2};
+      float f21[3] = {-r12[0] * f2, -r12[1] * f2, -r12[2] * f2};
+      // printf("zbl n1 %d n2 %d d12 %f e_c_half %f\n", n1, n2, d12, f);
+      if (n2 >= N) {
+        s_fx += f12[0];
+        s_fy += f12[1];
+        s_fz += f12[2];
+        atomicAdd(&g_fx[n2], double(f21[0]));// ghost atom
+        atomicAdd(&g_fy[n2], double(f21[1]));
+        atomicAdd(&g_fz[n2], double(f21[2]));
+
+        atomicAdd(&g_virial[n2 + 0 * nall], -r12[0] * f12[0]);
+        atomicAdd(&g_virial[n2 + 1 * nall], -r12[1] * f12[1]);
+        atomicAdd(&g_virial[n2 + 2 * nall], -r12[2] * f12[2]);
+        atomicAdd(&g_virial[n2 + 3 * nall], -r12[0] * f12[1]);
+        atomicAdd(&g_virial[n2 + 4 * nall], -r12[0] * f12[2]);
+        atomicAdd(&g_virial[n2 + 5 * nall], -r12[1] * f12[2]);
+        atomicAdd(&g_virial[n2 + 6 * nall], -r12[1] * f12[0]);
+        atomicAdd(&g_virial[n2 + 7 * nall], -r12[2] * f12[0]);
+        atomicAdd(&g_virial[n2 + 8 * nall], -r12[2] * f12[1]);
+
+      } else {
+        s_fx += f12[0] - f21[0];
+        s_fy += f12[1] - f21[1];
+        s_fz += f12[2] - f21[2];
+
+        s_sxx += r12[0] * f21[0];
+        s_syy += r12[1] * f21[1];
+        s_szz += r12[2] * f21[2];
+
+        s_sxy += r12[0] * f21[1];
+        s_sxz += r12[0] * f21[2];
+        s_syx += r12[1] * f21[0];
+        s_syz += r12[1] * f21[2];
+        s_szx += r12[2] * f21[0];
+        s_szy += r12[2] * f21[1];
+      }
+      s_pe += f * 0.5f;
+    }
+    g_fx[n1] += s_fx;
+    g_fy[n1] += s_fy;
+    g_fz[n1] += s_fz;
+    g_virial[n1 + 0 * nall] += s_sxx;
+    g_virial[n1 + 1 * nall] += s_syy;
+    g_virial[n1 + 2 * nall] += s_szz;
+    g_virial[n1 + 3 * nall] += s_sxy;
+    g_virial[n1 + 4 * nall] += s_sxz;
+    g_virial[n1 + 5 * nall] += s_syz;
+    g_virial[n1 + 6 * nall] += s_syx;
+    g_virial[n1 + 7 * nall] += s_szx;
+    g_virial[n1 + 8 * nall] += s_szy;
+    g_pe[n1] += s_pe;
+  }
+}

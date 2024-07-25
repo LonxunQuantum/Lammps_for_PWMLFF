@@ -1,4 +1,16 @@
 /*
+This code is developed based on the GPUMD source code and adds ghost atom processing in LAMMPS. 
+  Support multi GPUs.
+  Support GPUMD NEP shared bias and PWMLFF NEP independent bias forcefield.
+
+We have made the following improvements based on NEP4
+http://doc.lonxun.com/PWMLFF/models/nep/NEP%20model/
+*/
+
+/*
+    the open source code from https://github.com/brucefan1983/GPUMD
+    the licnese of NEP_CPU is as follows:
+
     Copyright 2017 Zheyong Fan, Ville Vierimaa, Mikko Ervasti, and Ari Harju
     This file is part of GPUMD.
     GPUMD is free software: you can redistribute it and/or modify
@@ -80,8 +92,63 @@ void NEP3::init_from_file(const char* file_potential, const bool is_rank_0, cons
     std::cout << "The first line of nep.txt should have at least 3 items." << std::endl;
     exit(1);
   }
-  if (tokens[0] == "nep4") {
+  if (tokens[0] == "nep") {
+    paramb.version = 2;
+    zbl.enabled = false;
+  } else if (tokens[0] == "nep3") {
+    paramb.version = 3;
+    zbl.enabled = false;
+  } else if (tokens[0] == "nep_zbl") {
+    paramb.version = 2;
+    zbl.enabled = true;
+  } else if (tokens[0] == "nep3_zbl") {
+    paramb.version = 3;
+    zbl.enabled = true;
+  } else if (tokens[0] == "nep4") {
     paramb.version = 4;
+    zbl.enabled = false;
+  } else if (tokens[0] == "nep4_zbl") {
+    paramb.version = 4;
+    zbl.enabled = true;
+  } else if (tokens[0] == "nep_temperature") {
+    paramb.version = 2;
+    paramb.model_type = 3;
+  } else if (tokens[0] == "nep_zbl_temperature") {
+    paramb.version = 2;
+    paramb.model_type = 3;
+    zbl.enabled = true;
+  } else if (tokens[0] == "nep3_temperature") {
+    paramb.version = 3;
+    paramb.model_type = 3;
+  } else if (tokens[0] == "nep3_zbl_temperature") {
+    paramb.version = 3;
+    paramb.model_type = 3;
+    zbl.enabled = true;
+  } else if (tokens[0] == "nep4_temperature") {
+    paramb.version = 4;
+    paramb.model_type = 3;
+  } else if (tokens[0] == "nep4_zbl_temperature") {
+    paramb.version = 4;
+    paramb.model_type = 3;
+    zbl.enabled = true;
+  } else if (tokens[0] == "nep_dipole") {
+    paramb.version = 2;
+    paramb.model_type = 1;
+  } else if (tokens[0] == "nep3_dipole") {
+    paramb.version = 3;
+    paramb.model_type = 1;
+  } else if (tokens[0] == "nep4_dipole") {
+    paramb.version = 4;
+    paramb.model_type = 1;
+  } else if (tokens[0] == "nep_polarizability") {
+    paramb.version = 2;
+    paramb.model_type = 2;
+  } else if (tokens[0] == "nep3_polarizability") {
+    paramb.version = 3;
+    paramb.model_type = 2;
+  } else if (tokens[0] == "nep4_polarizability") {
+    paramb.version = 4;
+    paramb.model_type = 2;
   }
   paramb.num_types = get_int_from_token(tokens[1], __FILE__, __LINE__);
   if (tokens.size() != 2 + paramb.num_types) {
@@ -106,8 +173,29 @@ void NEP3::init_from_file(const char* file_potential, const bool is_rank_0, cons
       }
     }
     element_atomic_number_list[n] = atomic_number;
+    zbl.atomic_numbers[n] = atomic_number;
     if (print_potential_info) {
       printf("    type %d (%s).\n", n, tokens[2 + n].c_str());
+    }
+  }
+
+// zbl 0.7 1.4
+  if (zbl.enabled) {
+    tokens = get_tokens(input);
+    if (tokens.size() != 3) {
+      std::cout << "This line should be zbl rc_inner rc_outer." << std::endl;
+      exit(1);
+    }
+    zbl.rc_inner = get_float_from_token(tokens[1], __FILE__, __LINE__);
+    zbl.rc_outer = get_float_from_token(tokens[2], __FILE__, __LINE__);
+    if (zbl.rc_inner == 0 && zbl.rc_outer == 0) {
+      zbl.flexibled = true;
+      printf("    has the flexible ZBL potential\n");
+    } else {
+      printf(
+        "    has the universal ZBL with inner cutoff %g A and outer cutoff %g A.\n",
+        zbl.rc_inner,
+        zbl.rc_outer);
     }
   }
 
@@ -228,10 +316,17 @@ void NEP3::init_from_file(const char* file_potential, const bool is_rank_0, cons
 
   annmb.num_c2   = paramb.num_types_sq * (paramb.n_max_radial + 1) * (paramb.basis_size_radial + 1);
   annmb.num_c3   = paramb.num_types_sq * (paramb.n_max_angular + 1) * (paramb.basis_size_angular + 1);
-
   int tmp_nn_params = (annmb.dim + 2) * annmb.num_neurons1 * (paramb.version == 4 ? paramb.num_types : 1);// no last bias
-
   int tmp = tmp_nn_params + paramb.num_types + annmb.num_c2 + annmb.num_c3 + 6 + annmb.dim;
+  
+  int num_type_zbl = 0;
+  if (zbl.enabled && zbl.flexibled) {
+    num_type_zbl = (paramb.num_types * (paramb.num_types + 1)) / 2;
+    neplinenums -= (1 + 10*num_type_zbl);// zbl 0 0; fixed zbl
+  } else if (zbl.enabled) {
+    neplinenums  -= 1; // zbl a b
+  }
+
   if (paramb.num_types == 1) {
     is_gpumd_nep = false;
   } else if (neplinenums == tmp) {
@@ -288,6 +383,16 @@ void NEP3::init_from_file(const char* file_potential, const bool is_rank_0, cons
     tokens = get_tokens(input);
     paramb.q_scaler[d] = get_float_from_token(tokens[0], __FILE__, __LINE__);
     // std::cout<<"q_scaler " << d << " " << paramb.q_scaler[d] << std::endl;
+  }
+
+  // flexible zbl potential parameters
+  if (zbl.flexibled) {
+    int num_type_zbl = (paramb.num_types * (paramb.num_types + 1)) / 2;
+    for (int d = 0; d < 10 * num_type_zbl; ++d) {
+      tokens = get_tokens(input);
+      zbl.para[d] = get_float_from_token(tokens[0], __FILE__, __LINE__);
+    }
+    zbl.num_types = paramb.num_types;
   }
 
 #ifdef USE_TABLE
@@ -506,7 +611,11 @@ void NEP3::compute_large_box_optim(
   CUDA_CHECK_KERNEL
   // cudaDeviceSynchronize();
   // nep_data.potential_per_atom.copy_to_host(cpu_potential_per_atom);
-  // printf("find_descriptor ei[10]=%f\n",cpu_potential_per_atom[10]);
+  // for (int ii = 0; ii < N; ii++) {
+  //   if (1) {
+  //     printf("before zbl m_cpu_ei[%d]=%f\n", ii, cpu_potential_per_atom[ii]);
+  //   }
+  // }
   
   // // bool is_dipole = paramb.model_type == 1;
   find_force_radial_large_box<<<grid_size, BLOCK_SIZE>>>(
@@ -615,6 +724,28 @@ void NEP3::compute_large_box_optim(
     nep_data.force_per_atom.data() + n_all * 2, 
     nep_data.virial_per_atom.data());
   CUDA_CHECK_KERNEL
+
+  if (zbl.enabled) {
+    find_force_ZBL<<<grid_size, BLOCK_SIZE>>>(
+      zbl,
+      n_all,
+      N,
+      N1,
+      nlocal,
+      nep_data.NN_angular.data(),
+      nep_data.NL_angular.data(),
+      lmp_data.type.data(),
+      lmp_data.position.data(),
+      lmp_data.position.data() + n_all,
+      lmp_data.position.data() + n_all * 2,
+      nep_data.force_per_atom.data(),
+      nep_data.force_per_atom.data() + n_all,
+      nep_data.force_per_atom.data() + n_all * 2, 
+      nep_data.virial_per_atom.data(),
+      nep_data.potential_per_atom.data());
+    CUDA_CHECK_KERNEL
+  }
+
   // checkMemoryUsage(4);
   // cudaDeviceSynchronize();
   // // nep_data.potential_per_atom.copy_to_host(cpu_potential_per_atom);
@@ -655,10 +786,18 @@ void NEP3::compute_large_box_optim(
   nep_data.total_virial.copy_to_host(cpu_total_virial);
   nep_data.potential_per_atom.copy_to_host(cpu_potential_per_atom);
   nep_data.force_per_atom.copy_to_host(cpu_force_per_atom);
+
+  // std::vector<double> tmp_viral(n_all * 9);
+  // nep_data.virial_per_atom.copy_to_host(tmp_viral.data());
   // for (int ii = 0; ii < N; ii++) {
-  //   if (ii % 1 == 0) {
-  //     printf("m_cpu_ei[%d]=%f m_cpu_force[%d] = [%f %f %f] m_cpu_virial[%d] = [%f %f %f]\n", 
-  //     ii, cpu_potential_per_atom[ii],
+  //   if (1) {
+  //     printf("after m_cpu_ei[%d]=%f\n", ii, cpu_potential_per_atom[ii]);
+  //   }
+  // }
+
+  // for (int ii = 0; ii < n_all; ii++) {
+  //   if (1) {
+  //     printf("m_cpu_force[%d] = [%f %f %f] m_cpu_virial[%d] = [%f %f %f]\n", 
   //     ii, cpu_force_per_atom[ii], cpu_force_per_atom[ii + n_all], cpu_force_per_atom[ii + n_all * 2],
   //     ii, tmp_viral[ii], tmp_viral[ii + n_all], tmp_viral[ii + n_all * 2]);
   //   }
@@ -667,6 +806,7 @@ void NEP3::compute_large_box_optim(
   // for (int ii = 0; ii < 6; ii++) {
   //   printf("cpu_total_virial[%d]=%f\n", ii, cpu_total_virial[ii]);
   // }
+
   // for (int ii = 0; ii < N; ii++) {
   //   if (ii % 1 == 0) {
   //     printf("cpu_ei[%d]=%f cpu_force[%d] = [%f %f %f]\n", ii, cpu_potential_per_atom[ii], ii, cpu_force_per_atom[ii], cpu_force_per_atom[ii + n_all], cpu_force_per_atom[ii + n_all * 2]);
