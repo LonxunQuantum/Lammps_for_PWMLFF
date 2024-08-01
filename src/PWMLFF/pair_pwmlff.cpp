@@ -110,6 +110,9 @@ void PairPWMLFF::settings(int narg, char** arg)
     // std::cout<<"the mpi process is " << comm->nprocs << std::endl;
     
     if (me == 0) utils::logmesg(this -> lmp, "<---- Loading model ---->");
+    
+    nep_cpu_models.resize(num_ff);
+
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         std::string model_file = models[ff_idx];
         try
@@ -147,8 +150,12 @@ void PairPWMLFF::settings(int narg, char** arg)
                     }
                     // std::cout<<"load nep.txt success and the model type is 2" << std::endl;
                 } else {
-                    nep_cpu_model.init_from_file(model_file, is_rank_0);
-                    nep_cpu_models.push_back(nep_cpu_model);
+                    // NEP3_CPU nep_cpu_model;
+                    // nep_cpu_model.init_from_file(model_file, is_rank_0);
+                    if (ff_idx > 0) {
+                        is_rank_0 = false; //for print
+                    }
+                    nep_cpu_models[ff_idx].init_from_file(model_file, is_rank_0);
                     model_type = 1;
                 }
                 if (me == 0) printf("\nLoading txt model file:   %s\n", model_file.c_str());
@@ -199,7 +206,7 @@ void PairPWMLFF::settings(int narg, char** arg)
         printf("\nmax_neighbor: %5d\n", max_neighbor);
         }
     } else if (model_type == 1) {
-        cutoff = nep_cpu_model.paramb.rc_radial;
+        cutoff = nep_cpu_models[0].paramb.rc_radial;
     } else if (model_type == 2) {
         cutoff = nep_gpu_model.paramb.rc_radial;
     }
@@ -254,7 +261,7 @@ void PairPWMLFF::coeff(int narg, char** arg)
             }
         }
     } else if (model_type == 1) {
-        std::vector<int> atom_type_module = nep_cpu_model.element_atomic_number_list;
+        std::vector<int> atom_type_module = nep_cpu_models[0].element_atomic_number_list;
         model_ntypes = atom_type_module.size();
         if (ntypes > model_ntypes || ntypes != narg - 2)  // type numbers in strucutre file and in pair_coeff should be the same
         {
@@ -950,8 +957,21 @@ void PairPWMLFF::compute(int eflag, int vflag)
         if (eflag_atom) {
             per_atom_potential = eatom;
         }
+        if ((num_ff > 1) && (current_timestep % out_freq != 0)) {
+            for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
+                for (int i = 0; i < list->inum + nghost; i++) {
+                        f_n[ff_idx][i][0] = 0;
+                        f_n[ff_idx][i][1] = 0;
+                        f_n[ff_idx][i][2] = 0;
+                }
+                for (int i =0; i < list->inum; i++) {
+                    e_atom_n[ff_idx][i] = 0;
+                }
+            }
+        }
         for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
             if ((num_ff == 1) or (current_timestep % out_freq != 0)) {
+                // printf("num_ff = %d, current_timestep = %d, out_freq = %d, ff_idx = %d\n", num_ff, current_timestep, out_freq, ff_idx);
                 // can not set the atom->type (the type set in config) to nep forcefild order, because the ghost atoms type same as the conifg
                 // The atomic types corresponding to the index of neighbors are constantly changing
                 nep_cpu_models[ff_idx].compute_for_lammps(
@@ -965,17 +985,14 @@ void PairPWMLFF::compute(int eflag, int vflag)
                     virial[component] += total_virial[component];
                     }
                 }
+                break;
             } else {
+                // printf("num_ff = %d, current_timestep = %d, out_freq = %d, ff_idx = %d\n", num_ff, current_timestep, out_freq, ff_idx);
                 total_potential = 0.0;
                 total_virial[6] = {0.0};
                 // for multi models, the output step, should calculate deviation
                 // 这里可以优化，快速置零
-                for (int i = 0; i < list->inum + nghost; i++) {
-                    f_n[ff_idx][i][0] = 0;
-                    f_n[ff_idx][i][1] = 0;
-                    f_n[ff_idx][i][2] = 0;
-                    e_atom_n[ff_idx][i] = 0;
-                }
+                
                 nep_cpu_models[ff_idx].compute_for_lammps(
                     atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh,atom->type, atom->x,
                     total_potential, total_virial, e_atom_n[ff_idx], f_n[ff_idx], per_atom_virial, ff_idx);
@@ -986,7 +1003,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
                         atom->f[i][2] = f_n[0][i][2];
                     }
                     if (eflag_atom) {
-                        for (int i = 0; i < list->inum + nghost; i++) {
+                        for (int i = 0; i < list->inum; i++) {
                            per_atom_potential[i] = e_atom_n[0][i];
                         }
                     }

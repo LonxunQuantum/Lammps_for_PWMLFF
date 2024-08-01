@@ -55,7 +55,7 @@ namespace LAMMPS_NS {
             
             NEP3 nep_gpu_model;
 
-            NEP3_CPU nep_cpu_model;
+            // NEP3_CPU nep_cpu_model;
             std::vector<NEP3_CPU> nep_cpu_models;
 
             torch::jit::script::Module module;//dp and nep jit model
