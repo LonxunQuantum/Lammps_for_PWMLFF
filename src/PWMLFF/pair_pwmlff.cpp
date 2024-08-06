@@ -31,10 +31,19 @@ PairPWMLFF::PairPWMLFF(LAMMPS *lmp) : Pair(lmp)
 	writedata = 1;
     comm_reverse = 3;
 
+    restartinfo = 0;//  set to 0 if your pair style does not store data in restart files
+    manybody_flag = 1; //set to 1 if your pair style is not pair-wise additive
+    single_enable = 0; 
+    copymode = 0;
+    allocated = 0;
+
 }
 
 PairPWMLFF::~PairPWMLFF()
 {
+    if (copymode)
+        return;
+
     if (allocated) 
     {
         memory->destroy(setflag);
@@ -331,6 +340,12 @@ void PairPWMLFF::init_style()
     if (force->newton_pair == 0) error->all(FLERR, "Pair style PWMLFF requires newton pair on");
     // Using a nearest neighbor table of type full
     neighbor->add_request(this, NeighConst::REQ_FULL);
+
+    cutoffsq = cutoff * cutoff;
+    int n = atom->ntypes;
+    for (int i = 1; i <= n; i++)
+        for (int j = 1; j <= n; j++)
+        cutsq[i][j] = cutoffsq;
 }
 /* ---------------------------------------------------------------------- */
 
@@ -710,7 +725,6 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int
     int n_all = nlocal + nghost;
     double rc2 = nep_gpu_model.paramb.rc_radial*nep_gpu_model.paramb.rc_radial;
     double rc_a2 = nep_gpu_model.paramb.rc_angular*nep_gpu_model.paramb.rc_angular;
-    // std::cout << "========= rc2 " << rc2 << " rc_a2 " << rc_a2 << std::endl;
     double min_dR = 1000;
     double min_dR_all;
 
@@ -721,7 +735,6 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int
     int NM = nep_gpu_nm;
     int N_NM = inum * NM;
     // imagetype.resize(inum);
-    // printf("find neighbor n_all %d nlocal %d nghost %d inum %d\n", n_all, nlocal, nghost, inum);
     neighbor_list.assign(N_NM, 0);
     neighbor_angular_list.assign(N_NM, 0);
     itype_convert_map.assign(n_all, -1);
@@ -802,25 +815,9 @@ void PairPWMLFF::compute(int eflag, int vflag)
     int nghost = atom->nghost;
     int n_all = nlocal + nghost;
     // int inum, jnum, itype, jtype;
+
     bool is_build_neighbor = false;
     double max_err, global_max_err, max_err_ei, global_max_err_ei;
-
-    is_build_neighbor = (current_timestep % neighbor->every == 0);
-
-    if (pre_nlocal != nlocal or pre_nghost != nghost) {
-        is_build_neighbor = true;
-        // printf("1 rank %d local atom %d pre_local %d ghost %d pre_ghost %d is_build_neighbor %d\n",rank, nlocal, pre_nlocal, nghost, pre_nghost, is_build_neighbor);
-        pre_nlocal = nlocal;
-        pre_nghost = nghost;
-    }
-    int global_flag;
-    int local_flag = is_build_neighbor ? 1 : 0;
-    MPI_Allreduce(&local_flag, &global_flag, 1, MPI_INT, MPI_LOR, world);
-    is_build_neighbor = global_flag ? true : false;
-
-    if (current_timestep % neighbor->every == 0) {
-        is_build_neighbor = true;
-    }
 
     // for dp and nep model from jitscript
     if (model_type == 0) {
@@ -946,7 +943,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
             }
         }
     } // if model_type == 0
-    else if (model_type == 1) {
+    else if (model_type == 1 and num_ff == 1) {
         double total_potential = 0.0;
         double total_virial[6] = {0.0};
         double* per_atom_potential = nullptr;
@@ -957,7 +954,30 @@ void PairPWMLFF::compute(int eflag, int vflag)
         if (eflag_atom) {
             per_atom_potential = eatom;
         }
-        if ((num_ff > 1) && (current_timestep % out_freq != 0)) {
+        nep_cpu_models[0].compute_for_lammps(
+        atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh, atom->type, atom->x,
+        total_potential, total_virial, per_atom_potential, atom->f, per_atom_virial, ff_idx);
+        if (eflag) {
+            eng_vdwl += total_potential;
+        }
+        if (vflag) {
+            for (int component = 0; component < 6; ++component) {
+            virial[component] += total_virial[component];
+            }
+        }
+    }
+    else if (model_type == 1 and num_ff > 1){
+        double total_potential = 0.0;
+        double total_virial[6] = {0.0};
+        double* per_atom_potential = nullptr;
+        double** per_atom_virial = nullptr;
+        if (cvflag_atom) {
+            per_atom_virial = cvatom;
+        }
+        if (eflag_atom) {
+            per_atom_potential = eatom;
+        }
+        if (current_timestep % out_freq != 0) {
             for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
                 for (int i = 0; i < list->inum + nghost; i++) {
                         f_n[ff_idx][i][0] = 0;
@@ -970,58 +990,59 @@ void PairPWMLFF::compute(int eflag, int vflag)
             }
         }
         for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-            if ((num_ff == 1) or (current_timestep % out_freq != 0)) {
-                // printf("num_ff = %d, current_timestep = %d, out_freq = %d, ff_idx = %d\n", num_ff, current_timestep, out_freq, ff_idx);
-                // can not set the atom->type (the type set in config) to nep forcefild order, because the ghost atoms type same as the conifg
-                // The atomic types corresponding to the index of neighbors are constantly changing
-                nep_cpu_models[ff_idx].compute_for_lammps(
-                atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh, atom->type, atom->x,
-                total_potential, total_virial, per_atom_potential, atom->f, per_atom_virial, ff_idx);
+            total_potential = 0.0;
+            total_virial[6] = {0.0};
+            // for multi models, the output step, should calculate deviation
+            // 这里可以优化，快速置零
+            
+            nep_cpu_models[ff_idx].compute_for_lammps(
+                atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh,atom->type, atom->x,
+                total_potential, total_virial, e_atom_n[ff_idx], f_n[ff_idx], per_atom_virial, ff_idx);
+            if (ff_idx == 0) {
+                for (int i = 0; i < list->inum + nghost; i++) {
+                    atom->f[i][0] = f_n[0][i][0];
+                    atom->f[i][1] = f_n[0][i][1];
+                    atom->f[i][2] = f_n[0][i][2];
+                }
+                if (eflag_atom) {
+                    for (int i = 0; i < list->inum; i++) {
+                        per_atom_potential[i] = e_atom_n[0][i];
+                    }
+                }
                 if (eflag) {
                     eng_vdwl += total_potential;
                 }
                 if (vflag) {
                     for (int component = 0; component < 6; ++component) {
-                    virial[component] += total_virial[component];
+                        virial[component] += total_virial[component];
                     }
-                }
-                break;
-            } else {
-                // printf("num_ff = %d, current_timestep = %d, out_freq = %d, ff_idx = %d\n", num_ff, current_timestep, out_freq, ff_idx);
-                total_potential = 0.0;
-                total_virial[6] = {0.0};
-                // for multi models, the output step, should calculate deviation
-                // 这里可以优化，快速置零
-                
-                nep_cpu_models[ff_idx].compute_for_lammps(
-                    atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh,atom->type, atom->x,
-                    total_potential, total_virial, e_atom_n[ff_idx], f_n[ff_idx], per_atom_virial, ff_idx);
-                if (ff_idx == 0) {
-                    for (int i = 0; i < list->inum + nghost; i++) {
-                        atom->f[i][0] = f_n[0][i][0];
-                        atom->f[i][1] = f_n[0][i][1];
-                        atom->f[i][2] = f_n[0][i][2];
-                    }
-                    if (eflag_atom) {
-                        for (int i = 0; i < list->inum; i++) {
-                           per_atom_potential[i] = e_atom_n[0][i];
-                        }
-                    }
-                    if (eflag) {
-                        eng_vdwl += total_potential;
-                    }
-                    if (vflag) {
-                        for (int component = 0; component < 6; ++component) {
-                            virial[component] += total_virial[component];
-                        }
-                    }    
-                }
+                }    
             } // else multi models out steps
         }   // for ff_idx      
     } // model_type == 1: nep_cpu version
     //   exploration mode.
     //   calculate the error of the force
     else if (model_type == 2) {
+
+        // bool is_build_neighbor = false;
+        // double max_err, global_max_err, max_err_ei, global_max_err_ei;
+
+        is_build_neighbor = (current_timestep % neighbor->every == 0);
+
+        if (pre_nlocal != nlocal or pre_nghost != nghost) {
+            is_build_neighbor = true;
+            pre_nlocal = nlocal;
+            pre_nghost = nghost;
+        }
+        int global_flag;
+        int local_flag = is_build_neighbor ? 1 : 0;
+        MPI_Allreduce(&local_flag, &global_flag, 1, MPI_INT, MPI_LOR, world);
+        is_build_neighbor = global_flag ? true : false;
+
+        if (current_timestep % neighbor->every == 0) {
+            is_build_neighbor = true;
+        }
+        
         double total_potential = 0.0;
         // double total_virial[6] = {0.0};
         double* per_atom_potential = nullptr;

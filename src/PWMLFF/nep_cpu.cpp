@@ -2036,7 +2036,6 @@ void find_force_angular_for_lammps(
 }
 
 void find_force_ZBL_for_lammps(
-  NEP3_CPU::ParaMB& paramb,
   const NEP3_CPU::ZBL& zbl,
   int N,
   int* g_ilist,
@@ -2062,14 +2061,10 @@ void find_force_ZBL_for_lammps(
         g_pos[n2][0] - g_pos[n1][0], g_pos[n2][1] - g_pos[n1][1], g_pos[n2][2] - g_pos[n1][2]};
 
       double d12sq = r12[0] * r12[0] + r12[1] * r12[1] + r12[2] * r12[2];
-      // double max_rc_outer = 2.5;
-      // if (d12sq >= max_rc_outer * max_rc_outer) {
-      //   continue;
-      // }
-      if (d12sq >= paramb.rc_angular * paramb.rc_angular) {
+      double max_rc_outer = 2.5;
+      if (d12sq >= max_rc_outer * max_rc_outer) {
         continue;
       }
-
       double d12 = sqrt(d12sq);
       double d12inv = 1.0 / d12;
       double f, fp;
@@ -2122,7 +2117,6 @@ void find_force_ZBL_for_lammps(
         g_virial[n2][8] -= r12[2] * f12[1]; // zy
       }
       g_total_potential += f * 0.5; // always calculate this
-      // printf("zbl n1 %d n2 %d d12 %f e_c_half %f\n", n1, n2, d12, f);
       if (g_potential) {            // only calculate when required
         g_potential[n1] += f * 0.5;
       }
@@ -3380,7 +3374,7 @@ void NEP3_CPU::compute_for_lammps(
     force, total_virial, virial);
   if (zbl.enabled) {
     find_force_ZBL_for_lammps(
-      paramb, zbl, N, ilist, NN, NL, type, map_atom_type_idx,  pos, force, total_virial, virial, total_potential, potential);
+      zbl, N, ilist, NN, NL, type, map_atom_type_idx,  pos, force, total_virial, virial, total_potential, potential);
   }
 }
 

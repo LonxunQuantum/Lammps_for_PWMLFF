@@ -32,6 +32,7 @@ namespace LAMMPS_NS {
             std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<double>> generate_neighdata_nep();
             std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>, std::vector<float>> generate_neighdata_nep_gpu();
             std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> convert_dim(bool is_build_neighbor=false);
+
             void compute(int, int) override;
             void settings(int, char **) override;
             void coeff(int, char **) override;
@@ -75,6 +76,7 @@ namespace LAMMPS_NS {
             int model_type; // 0 for jitmodel(dp or nep) 1 for nep_cpu 2 for nep_gpu
             // DP params
             double cutoff;
+            double cutoffsq;
             // NEP params
             double cutoff_radial;
             double cutoff_angular;
