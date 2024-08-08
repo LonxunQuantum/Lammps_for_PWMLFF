@@ -34,15 +34,15 @@ PairPWMLFF::PairPWMLFF(LAMMPS *lmp) : Pair(lmp)
     restartinfo = 0;//  set to 0 if your pair style does not store data in restart files
     manybody_flag = 1; //set to 1 if your pair style is not pair-wise additive
     single_enable = 0; 
-    copymode = 0;
-    allocated = 0;
+    // copymode = 0;
+    // allocated = 0;
 
 }
 
 PairPWMLFF::~PairPWMLFF()
 {
-    if (copymode)
-        return;
+    // if (copymode)
+    //     return;
 
     if (allocated) 
     {
@@ -819,13 +819,15 @@ void PairPWMLFF::compute(int eflag, int vflag)
     bool is_build_neighbor = false;
     double max_err, global_max_err, max_err_ei, global_max_err_ei;
 
+    double* per_atom_potential = nullptr;
+    double** per_atom_virial = nullptr;
+    double *virial = force->pair->virial;
+    double **f = atom->f;
     // for dp and nep model from jitscript
     if (model_type == 0) {
 
         int inum = list->inum;
-        double *virial = force->pair->virial;
         double **x = atom->x;
-        double **f = atom->f;
         int *type = atom->type;
         // auto t4 = std::chrono::high_resolution_clock::now();
         std::vector<int> imagetype_map, neighbor_list, neighbor_type_list;
@@ -946,8 +948,6 @@ void PairPWMLFF::compute(int eflag, int vflag)
     else if (model_type == 1 and num_ff == 1) {
         double total_potential = 0.0;
         double total_virial[6] = {0.0};
-        double* per_atom_potential = nullptr;
-        double** per_atom_virial = nullptr;
         if (cvflag_atom) {
             per_atom_virial = cvatom;
         }
@@ -967,46 +967,60 @@ void PairPWMLFF::compute(int eflag, int vflag)
         }
     }
     else if (model_type == 1 and num_ff > 1){
-        double total_potential = 0.0;
-        double total_virial[6] = {0.0};
-        double* per_atom_potential = nullptr;
-        double** per_atom_virial = nullptr;
         if (cvflag_atom) {
             per_atom_virial = cvatom;
         }
         if (eflag_atom) {
             per_atom_potential = eatom;
         }
-        if (current_timestep % out_freq != 0) {
-            for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-                for (int i = 0; i < list->inum + nghost; i++) {
-                        f_n[ff_idx][i][0] = 0;
-                        f_n[ff_idx][i][1] = 0;
-                        f_n[ff_idx][i][2] = 0;
-                }
-                for (int i =0; i < list->inum; i++) {
-                    e_atom_n[ff_idx][i] = 0;
-                }
+        // if (current_timestep % out_freq == 0) {
+        //     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
+        //         for (int i = 0; i < n_all; i++) {
+        //                 f_n[ff_idx][i][0] = 0;
+        //                 f_n[ff_idx][i][1] = 0;
+        //                 f_n[ff_idx][i][2] = 0;
+        //                 e_atom_n[ff_idx][i] = 0;
+        //         }
+        //     }
+        // } else {
+        //     for (int i = 0; i < n_all; i++) {
+        //             f_n[0][i][0] = 0;
+        //             f_n[0][i][1] = 0;
+        //             f_n[0][i][2] = 0;
+        //             e_atom_n[0][i] = 0;
+        //     }
+        // }
+        for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
+            for (int i = 0; i < n_all; i++) {
+                    f_n[ff_idx][i][0] = 0.0;
+                    f_n[ff_idx][i][1] = 0.0;
+                    f_n[ff_idx][i][2] = 0.0;
+                    e_atom_n[ff_idx][i] = 0.0;
             }
         }
+
         for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-            total_potential = 0.0;
-            total_virial[6] = {0.0};
+            if (ff_idx > 0 && (current_timestep % out_freq != 0)) continue;
+            double total_potential = 0.0;
+            double total_virial[6] = {0.0};
             // for multi models, the output step, should calculate deviation
             // 这里可以优化，快速置零
             
             nep_cpu_models[ff_idx].compute_for_lammps(
                 atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh,atom->type, atom->x,
                 total_potential, total_virial, e_atom_n[ff_idx], f_n[ff_idx], per_atom_virial, ff_idx);
+
             if (ff_idx == 0) {
-                for (int i = 0; i < list->inum + nghost; i++) {
+                for (int i = 0; i < n_all; i++) {
                     atom->f[i][0] = f_n[0][i][0];
                     atom->f[i][1] = f_n[0][i][1];
                     atom->f[i][2] = f_n[0][i][2];
+                    printf("step %d model[%d] out atom_f[%d]=%f, %f, %f; f_n[0]=%f, %f, %f\n", current_timestep, ff_idx, i, atom->f[i][0], atom->f[i][1], atom->f[i][2], f_n[0][i][0], f_n[0][i][1], f_n[0][i][2]);
                 }
                 if (eflag_atom) {
                     for (int i = 0; i < list->inum; i++) {
                         per_atom_potential[i] = e_atom_n[0][i];
+                        printf("step %d model[%d] out ei[%d]=%f\n", current_timestep, ff_idx, i, e_atom_n[0][i]);
                     }
                 }
                 if (eflag) {
@@ -1015,9 +1029,14 @@ void PairPWMLFF::compute(int eflag, int vflag)
                 if (vflag) {
                     for (int component = 0; component < 6; ++component) {
                         virial[component] += total_virial[component];
+                        printf("step %d model[%d] out virial[%d]=%f\n",current_timestep, ff_idx, component, virial[component]);
                     }
-                }    
+                }
             } // else multi models out steps
+            // if (current_timestep % out_freq != 0) {
+            //     printf("break the step %d\n", current_timestep);
+            //     break;
+            // }
         }   // for ff_idx      
     } // model_type == 1: nep_cpu version
     //   exploration mode.
@@ -1154,7 +1173,20 @@ void PairPWMLFF::compute(int eflag, int vflag)
                 fflush(explrError_fp);
             } 
         }
-    } 
+    }
+    
+    // for (int component = 0; component < 6; ++component) {
+    //     printf("laststep %d model[%d] out virial[%d]=%f\n",current_timestep, ff_idx, component, virial[component]);
+    // }
+    // for (int i = 0; i < list->inum; i++) {
+    //     printf("laststep %d model[%d] per_atom_potential[%d]=%f out_ei[%d]=%f\n", current_timestep, 0, i, per_atom_potential[i], i, e_atom_n[0][i]);
+    // }
+    // for (int i = 0; i < n_all; i++) {
+    //     printf("laststep %d model[%d] out atom_f[%d]=%f, %f, %f; f_n[0]=%f, %f, %f\n", 
+    //     current_timestep, ff_idx,
+    //     i, atom->f[i][0], atom->f[i][1], atom->f[i][2], 
+    //     f_n[0][i][0], f_n[0][i][1], f_n[0][i][2]);
+    // }
     // std::cout << "t4 " << (t5 - t4).count() * 0.000001 << "\tms" << std::endl;
     // std::cout << "t5 " << (t6 - t5).count() * 0.000001 << "\tms" << std::endl;
     // std::cout << "t6 " << (t7 - t6).count() * 0.000001 << "\tms" << std::endl;
