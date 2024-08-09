@@ -1766,9 +1766,8 @@ void find_descriptor_for_lammps(
 
     g_total_potential += F; // always calculate this
     if (g_potential) {      // only calculate when required
-      g_potential[n1] += F;
+      g_potential[n1] = F;
     }
-    // std::cout << "g potential n1 " << n1 << " force " << F << std::endl;
     for (int d = 0; d < annmb.dim; ++d) {
       g_Fp[d * nlocal + n1] = Fp[d] * paramb.q_scaler[d];
     }
@@ -3359,7 +3358,6 @@ void NEP3_CPU::compute_for_lammps(
     gn_radial.data(), gn_angular.data(),
 #endif
     Fp.data(), sum_fxyz.data(), total_potential, potential);
-
   find_force_radial_for_lammps( 
     paramb, annmb, nlocal, N, ilist, NN, NL, type, map_atom_type_idx, pos, Fp.data(),
 #ifdef USE_TABLE_FOR_RADIAL_FUNCTIONS

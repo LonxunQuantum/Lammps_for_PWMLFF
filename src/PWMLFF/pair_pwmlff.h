@@ -54,7 +54,8 @@ namespace LAMMPS_NS {
 
             bool use_nep_gpu;
             
-            NEP3 nep_gpu_model;
+            // NEP3 nep_gpu_model;
+            std::vector<NEP3> nep_gpu_models;
 
             // NEP3_CPU nep_cpu_model;
             std::vector<NEP3_CPU> nep_cpu_models;

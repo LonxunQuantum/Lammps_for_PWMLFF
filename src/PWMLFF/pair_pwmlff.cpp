@@ -120,7 +120,13 @@ void PairPWMLFF::settings(int narg, char** arg)
     
     if (me == 0) utils::logmesg(this -> lmp, "<---- Loading model ---->");
     
-    nep_cpu_models.resize(num_ff);
+    if (num_devices < 1) {
+        use_nep_gpu = false;
+        nep_cpu_models.resize(num_ff);
+    } else {
+        use_nep_gpu = true;
+        nep_gpu_models.resize(num_ff);
+    }
 
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         std::string model_file = models[ff_idx];
@@ -140,19 +146,23 @@ void PairPWMLFF::settings(int narg, char** arg)
             try {
                 bool is_rank_0 = (comm->me == 0);
 
-                if (num_devices < 1) {
-                    std::cout << "Can not find the GPU devices. The nep cpu version will be used for lammps!" << std::endl;
-                    use_nep_gpu = false;
-                } else {
-                    // std::cout << "The GPU device will be used!" << std::endl;
-                    use_nep_gpu = true;
-                }
+                // if (num_devices < 1) {
+                //     std::cout << "Can not find the GPU devices. The nep cpu version will be used for lammps!" << std::endl;
+                //     use_nep_gpu = false;
+                // } else {
+                //     // std::cout << "The GPU device will be used!" << std::endl;
+                //     use_nep_gpu = true;
+                // }
 
                 // if the gpu nums > 0 and libnep.so is exsits, use gpu model
+                if (ff_idx > 0) {
+                    is_rank_0 = false; //for print
+                }
                 if (use_nep_gpu) {
                     int device_id = rank % num_devices;
                     cudaSetDevice(device_id);
-                    nep_gpu_model.init_from_file(model_file.c_str(), is_rank_0, device_id);
+
+                    nep_gpu_models[ff_idx].init_from_file(model_file.c_str(), is_rank_0, device_id);
                     model_type = 2;
                     if (device_id == 0) {
                         printf("MPI rank %d rank using GPU device %d\n", rank, device_id);
@@ -161,9 +171,6 @@ void PairPWMLFF::settings(int narg, char** arg)
                 } else {
                     // NEP3_CPU nep_cpu_model;
                     // nep_cpu_model.init_from_file(model_file, is_rank_0);
-                    if (ff_idx > 0) {
-                        is_rank_0 = false; //for print
-                    }
                     nep_cpu_models[ff_idx].init_from_file(model_file, is_rank_0);
                     model_type = 1;
                 }
@@ -217,7 +224,7 @@ void PairPWMLFF::settings(int narg, char** arg)
     } else if (model_type == 1) {
         cutoff = nep_cpu_models[0].paramb.rc_radial;
     } else if (model_type == 2) {
-        cutoff = nep_gpu_model.paramb.rc_radial;
+        cutoff = nep_gpu_models[0].paramb.rc_radial;
     }
     // since we need num_ff, so well allocate memory here
     // but not in allocate()
@@ -297,7 +304,7 @@ void PairPWMLFF::coeff(int narg, char** arg)
         }
     } else if (model_type == 2) { // for nep_gpu
         // check or reset
-        std::vector<int> atom_type_module = nep_gpu_model.element_atomic_number_list;
+        std::vector<int> atom_type_module = nep_gpu_models[0].element_atomic_number_list;
         model_ntypes = atom_type_module.size();
         if (ntypes > model_ntypes || ntypes != narg - 2)  // type numbers in strucutre file and in pair_coeff should be the same
         {
@@ -311,7 +318,9 @@ void PairPWMLFF::coeff(int narg, char** arg)
                 int index = std::distance(atom_type_module.begin(), iter);
                 model_atom_type_idx.push_back(index); 
                 atom_types.push_back(temp);
-                    nep_gpu_model.map_atom_type_idx.push_back(index);
+                for(int jj=0; jj < num_ff; ++jj){
+                    nep_gpu_models[jj].map_atom_type_idx.push_back(index);
+                }
                 // std::cout<<"=== the config atom type "<< temp << " index in ff is "  << index << std::endl;
             }
             else
@@ -723,8 +732,8 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int
     // int ntypes = atom->ntypes;
     int ntypes = model_ntypes;
     int n_all = nlocal + nghost;
-    double rc2 = nep_gpu_model.paramb.rc_radial*nep_gpu_model.paramb.rc_radial;
-    double rc_a2 = nep_gpu_model.paramb.rc_angular*nep_gpu_model.paramb.rc_angular;
+    double rc2 = nep_gpu_models[0].paramb.rc_radial*nep_gpu_models[0].paramb.rc_radial;
+    double rc_a2 = nep_gpu_models[0].paramb.rc_angular*nep_gpu_models[0].paramb.rc_angular;
     double min_dR = 1000;
     double min_dR_all;
 
@@ -859,7 +868,6 @@ void PairPWMLFF::compute(int eflag, int vflag)
         only 1 is used for MD
         1, 2, 3, 4 all for the deviation
         */
-
         for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
             if (ff_idx > 0 && (current_timestep % out_freq != 0)) continue;
             torch::Tensor Force;
@@ -973,78 +981,62 @@ void PairPWMLFF::compute(int eflag, int vflag)
         if (eflag_atom) {
             per_atom_potential = eatom;
         }
-        // if (current_timestep % out_freq == 0) {
-        //     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-        //         for (int i = 0; i < n_all; i++) {
-        //                 f_n[ff_idx][i][0] = 0;
-        //                 f_n[ff_idx][i][1] = 0;
-        //                 f_n[ff_idx][i][2] = 0;
-        //                 e_atom_n[ff_idx][i] = 0;
-        //         }
-        //     }
-        // } else {
+
+        // for (ff_idx = 0; ff_idx < num_ff; ff_idx++) { 
+        // This 0.0 setting method will error after the first step
+        //  Caught signal 11(Segmentation fault:address not mappedto obiect ataddress 0xc0
+        //1 0x00000000006fbc2C LAMMPS NS::Modify::setup()/the/path/src/Obj_mpi/../modify.cpp:308
+        //2 0x00000000007d6486 LAMMPS NS::Verlet::setup()/the/path/src/Obj_mpi/../verlet.cpp:159
         //     for (int i = 0; i < n_all; i++) {
-        //             f_n[0][i][0] = 0;
-        //             f_n[0][i][1] = 0;
-        //             f_n[0][i][2] = 0;
-        //             e_atom_n[0][i] = 0;
+        //         f_n[ff_idx][i][0] = 0.0;
+        //         f_n[ff_idx][i][1] = 0.0;
+        //         f_n[ff_idx][i][2] = 0.0;
+        //         e_atom_n[ff_idx][i] = 0.0;
         //     }
         // }
-        for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-            for (int i = 0; i < n_all; i++) {
-                    f_n[ff_idx][i][0] = 0.0;
-                    f_n[ff_idx][i][1] = 0.0;
-                    f_n[ff_idx][i][2] = 0.0;
-                    e_atom_n[ff_idx][i] = 0.0;
-            }
-        }
 
         for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
             if (ff_idx > 0 && (current_timestep % out_freq != 0)) continue;
             double total_potential = 0.0;
             double total_virial[6] = {0.0};
             // for multi models, the output step, should calculate deviation
-            // 这里可以优化，快速置零
-            
+            for (int i = 0; i < n_all; i++) {
+                f_n[ff_idx][i][0] = 0.0;
+                f_n[ff_idx][i][1] = 0.0;
+                f_n[ff_idx][i][2] = 0.0;
+            }
+            for (int i = 0; i < list->inum; i++) {
+                e_atom_n[ff_idx][i] = 0.0;
+            }
             nep_cpu_models[ff_idx].compute_for_lammps(
                 atom->nlocal, list->inum, list->ilist, list->numneigh, list->firstneigh,atom->type, atom->x,
                 total_potential, total_virial, e_atom_n[ff_idx], f_n[ff_idx], per_atom_virial, ff_idx);
 
             if (ff_idx == 0) {
                 for (int i = 0; i < n_all; i++) {
-                    atom->f[i][0] = f_n[0][i][0];
-                    atom->f[i][1] = f_n[0][i][1];
-                    atom->f[i][2] = f_n[0][i][2];
-                    printf("step %d model[%d] out atom_f[%d]=%f, %f, %f; f_n[0]=%f, %f, %f\n", current_timestep, ff_idx, i, atom->f[i][0], atom->f[i][1], atom->f[i][2], f_n[0][i][0], f_n[0][i][1], f_n[0][i][2]);
+                    f[i][0] = f_n[0][i][0];
+                    f[i][1] = f_n[0][i][1];
+                    f[i][2] = f_n[0][i][2];
                 }
                 if (eflag_atom) {
                     for (int i = 0; i < list->inum; i++) {
                         per_atom_potential[i] = e_atom_n[0][i];
-                        printf("step %d model[%d] out ei[%d]=%f\n", current_timestep, ff_idx, i, e_atom_n[0][i]);
                     }
                 }
                 if (eflag) {
-                    eng_vdwl += total_potential;
+                    eng_vdwl = total_potential;
                 }
                 if (vflag) {
                     for (int component = 0; component < 6; ++component) {
                         virial[component] += total_virial[component];
-                        printf("step %d model[%d] out virial[%d]=%f\n",current_timestep, ff_idx, component, virial[component]);
                     }
                 }
             } // else multi models out steps
-            // if (current_timestep % out_freq != 0) {
-            //     printf("break the step %d\n", current_timestep);
-            //     break;
-            // }
         }   // for ff_idx      
     } // model_type == 1: nep_cpu version
     //   exploration mode.
     //   calculate the error of the force
-    else if (model_type == 2) {
-
-        // bool is_build_neighbor = false;
-        // double max_err, global_max_err, max_err_ei, global_max_err_ei;
+    else if (model_type == 2 and num_ff == 1) {
 
         is_build_neighbor = (current_timestep % neighbor->every == 0);
 
@@ -1063,9 +1055,6 @@ void PairPWMLFF::compute(int eflag, int vflag)
         }
         
         double total_potential = 0.0;
-        // double total_virial[6] = {0.0};
-        double* per_atom_potential = nullptr;
-        double** per_atom_virial = nullptr;
         if (cvflag_atom) {
             per_atom_virial = cvatom;
         }
@@ -1098,7 +1087,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
         // auto duration_convert_dim = std::chrono::duration_cast<std::chrono::microseconds>(end_convert_dim - start_convert_dim).count();
         
         // auto start_compute_large_box_optim = std::chrono::high_resolution_clock::now();
-        nep_gpu_model.compute_large_box_optim(
+        nep_gpu_models[0].compute_large_box_optim(
         is_build_neighbor,
         n_all, 
         atom->nlocal,
@@ -1148,14 +1137,98 @@ void PairPWMLFF::compute(int eflag, int vflag)
             atom->f[i][0] = cpu_force_per_atom[i];
             atom->f[i][1] = cpu_force_per_atom[n_all + i];
             atom->f[i][2] = cpu_force_per_atom[2*n_all + i];
-
-            // if (i % 1000 == 0) {
-            //     printf("force_%d = [%f, %f, %f]\n", i, atom->f[i][0], atom->f[i][1], atom->f[i][2]);
-            // }
         }
     }
+    else if (model_type == 2 and num_ff > 1) { // nep gpu version multi models deviation
+        is_build_neighbor = (current_timestep % neighbor->every == 0);
+        if (pre_nlocal != nlocal or pre_nghost != nghost) {
+            is_build_neighbor = true;
+            pre_nlocal = nlocal;
+            pre_nghost = nghost;
+        }
+        int global_flag;
+        int local_flag = is_build_neighbor ? 1 : 0;
+        MPI_Allreduce(&local_flag, &global_flag, 1, MPI_INT, MPI_LOR, world);
+        is_build_neighbor = global_flag ? true : false;
 
-    // for jit model or nep_cpu model, the mulit nep_cpu models have error
+        if (current_timestep % neighbor->every == 0) {
+            is_build_neighbor = true;
+        }
+        
+        if (cvflag_atom) {
+            per_atom_virial = cvatom;
+        }
+        if (eflag_atom) {
+            per_atom_potential = eatom;
+        }
+        
+        for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
+            if (ff_idx > 0 && (current_timestep % out_freq != 0)) continue;
+            std::tie(itype_convert_map, firstneighbor_cpu, position_cpu) = convert_dim(is_build_neighbor);
+            for (int i = 0; i < n_all; i++) {
+            // printf("before step[%d] model[%d] f_n[%d]=%f, %f, %f, e = %f\n", current_timestep, ff_idx, i, f_n[ff_idx][i][0], f_n[ff_idx][i][1], f_n[ff_idx][i][2], e_atom_n[ff_idx][i]);
+                f_n[ff_idx][i][0] = 0.0;
+                f_n[ff_idx][i][1] = 0.0;
+                f_n[ff_idx][i][2] = 0.0;
+            }
+            for (int i = 0; i < list->inum; i++) {
+                e_atom_n[ff_idx][i] = 0.0;
+            }
+            std::vector<double> cpu_potential_per_atom(list->inum, 0.0);
+            std::vector<double> cpu_force_per_atom(n_all * 3, 0.0);
+            std::vector<double> cpu_total_virial(6, 0.0);
+            
+            nep_gpu_models[ff_idx].compute_large_box_optim(
+            is_build_neighbor,
+            n_all, 
+            atom->nlocal,
+            list->inum,
+            nep_gpu_nm,
+            itype_convert_map.data(),
+            list->ilist,
+            list->numneigh,
+            firstneighbor_cpu.data(),
+            position_cpu.data(),
+            cpu_potential_per_atom.data(), 
+            cpu_force_per_atom.data(), 
+            cpu_total_virial.data());
+
+            for (int i = 0; i < list->inum; ++i) {
+                e_atom_n[ff_idx][i] = cpu_potential_per_atom[i];
+            }
+            for (int i = 0; i < n_all; ++i) {
+                f_n[ff_idx][i][0] = cpu_force_per_atom[i];
+                f_n[ff_idx][i][1] = cpu_force_per_atom[n_all + i];
+                f_n[ff_idx][i][2] = cpu_force_per_atom[2*n_all + i];
+            }
+            if (ff_idx == 0) {
+                if (eflag_atom) {
+                    for (int i = 0; i < list->inum; ++i) {
+                        per_atom_potential[i] = cpu_potential_per_atom[i];
+                    }
+                }
+                if (eflag) {
+                    double tmp = 0;
+                    for (int i = 0; i < list->inum; ++i) {
+                        tmp += cpu_potential_per_atom[i];
+                    }
+                    eng_vdwl = tmp;
+                }
+                if (vflag) {
+                    for (int component = 0; component < 6; ++component) {
+                        virial[component] = cpu_total_virial[component];
+                    }
+                }
+                for (int i = 0; i < n_all; ++i) {
+                    f[i][0] = cpu_force_per_atom[i];
+                    f[i][1] = cpu_force_per_atom[n_all + i];
+                    f[i][2] = cpu_force_per_atom[2*n_all + i];
+                }
+            } // if  ff_idx == 0
+        } // for ff_idx
+    } // nep gpu version multi models deviation
+
+    // for deviation of multi models
     if (num_ff > 1 && (current_timestep % out_freq == 0)) {
         // calculate model deviation with Force
         std::pair<double, double> result = calc_max_error(f_n, e_atom_n);
@@ -1175,18 +1248,6 @@ void PairPWMLFF::compute(int eflag, int vflag)
         }
     }
     
-    // for (int component = 0; component < 6; ++component) {
-    //     printf("laststep %d model[%d] out virial[%d]=%f\n",current_timestep, ff_idx, component, virial[component]);
-    // }
-    // for (int i = 0; i < list->inum; i++) {
-    //     printf("laststep %d model[%d] per_atom_potential[%d]=%f out_ei[%d]=%f\n", current_timestep, 0, i, per_atom_potential[i], i, e_atom_n[0][i]);
-    // }
-    // for (int i = 0; i < n_all; i++) {
-    //     printf("laststep %d model[%d] out atom_f[%d]=%f, %f, %f; f_n[0]=%f, %f, %f\n", 
-    //     current_timestep, ff_idx,
-    //     i, atom->f[i][0], atom->f[i][1], atom->f[i][2], 
-    //     f_n[0][i][0], f_n[0][i][1], f_n[0][i][2]);
-    // }
     // std::cout << "t4 " << (t5 - t4).count() * 0.000001 << "\tms" << std::endl;
     // std::cout << "t5 " << (t6 - t5).count() * 0.000001 << "\tms" << std::endl;
     // std::cout << "t6 " << (t7 - t6).count() * 0.000001 << "\tms" << std::endl;
