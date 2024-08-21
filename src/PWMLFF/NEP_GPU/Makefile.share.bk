@@ -41,7 +41,7 @@ CUDA_SOURCES = force/nep3.cu utilities/error.cu utilities/gpu_vector.cu utilitie
 CUDA_OBJECTS = $(CUDA_SOURCES:.cu=.o)
 
 # Shared library
-SHARED_LIB = libnep_gpu.so
+SHARED_LIB = ../../libnep_gpu.so
 
 all: $(SHARED_LIB)
 

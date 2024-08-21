@@ -19,7 +19,7 @@ SIZE =		size
 ARCHIVE =	ar
 ARFLAGS =	-rc
 SHLIBFLAGS =	-shared -rdynamic
-NEP_CUDA_PATH = $(CURDIR)/../PWMLFF/NEP_GPU
+NEP_CUDA_PATH = $(CURDIR)/..
 
 CUDA_HOME = $(CUDADIR)
 # CUDA include and lib paths
