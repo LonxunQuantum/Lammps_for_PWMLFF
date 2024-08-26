@@ -211,9 +211,13 @@ void NEP3::init_from_file(const char* file_potential, const bool is_rank_0, cons
     printf("    radial cutoff = %g A.\n", paramb.rc_radial);
     printf("    angular cutoff = %g A.\n", paramb.rc_angular);
   }
-  paramb.MN_radial = 500;
-  paramb.MN_angular = 100;
-
+  if (paramb.rc_radial > paramb.rc_angular) {
+    paramb.MN_radial = 500;
+    paramb.MN_angular = 200;
+  } else {
+    paramb.MN_radial = 500;
+    paramb.MN_angular = 500;
+  }
   if (tokens.size() == 5) {
     int MN_radial = get_int_from_token(tokens[3], __FILE__, __LINE__);
     int MN_angular = get_int_from_token(tokens[4], __FILE__, __LINE__);
