@@ -19,8 +19,9 @@
 #include "update.h"
 #include "domain.h"
 #include <dlfcn.h>
+#ifdef USE_CUDA
 #include <cuda_runtime.h>
-
+#endif
 using namespace LAMMPS_NS;
 
 /* ---------------------------------------------------------------------- */
@@ -125,7 +126,12 @@ void PairPWMLFF::settings(int narg, char** arg)
         nep_cpu_models.resize(num_ff);
     } else {
         use_nep_gpu = true;
-        nep_gpu_models.resize(num_ff);
+        #ifdef USE_CUDA
+            nep_gpu_models.resize(num_ff);
+        #else
+            use_nep_gpu = false;
+            nep_cpu_models.resize(num_ff);
+        #endif
     }
 
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
@@ -158,7 +164,8 @@ void PairPWMLFF::settings(int narg, char** arg)
                 if (ff_idx > 0) {
                     is_rank_0 = false; //for print
                 }
-                if (use_nep_gpu) {
+                #ifdef USE_CUDA
+                if (use_nep_gpu == true) {
                     int device_id = rank % num_devices;
                     cudaSetDevice(device_id);
 
@@ -168,7 +175,10 @@ void PairPWMLFF::settings(int narg, char** arg)
                         printf("MPI rank %d rank using GPU device %d\n", rank, device_id);
                     }
                     // std::cout<<"load nep.txt success and the model type is 2" << std::endl;
-                } else {
+                }
+                #endif
+                
+                if(use_nep_gpu == false) {
                     // NEP3_CPU nep_cpu_model;
                     // nep_cpu_model.init_from_file(model_file, is_rank_0);
                     nep_cpu_models[ff_idx].init_from_file(model_file, is_rank_0);
@@ -224,7 +234,11 @@ void PairPWMLFF::settings(int narg, char** arg)
     } else if (model_type == 1) {
         cutoff = nep_cpu_models[0].paramb.rc_radial;
     } else if (model_type == 2) {
-        cutoff = nep_gpu_models[0].paramb.rc_radial;
+        #ifdef USE_CUDA
+            cutoff = nep_gpu_models[0].paramb.rc_radial;
+        #else
+            cutoff = 0.0;
+        #endif
     }
     // since we need num_ff, so well allocate memory here
     // but not in allocate()
@@ -304,6 +318,7 @@ void PairPWMLFF::coeff(int narg, char** arg)
         }
     } else if (model_type == 2) { // for nep_gpu
         // check or reset
+        #ifdef USE_CUDA
         std::vector<int> atom_type_module = nep_gpu_models[0].element_atomic_number_list;
         model_ntypes = atom_type_module.size();
         if (ntypes > model_ntypes || ntypes != narg - 2)  // type numbers in strucutre file and in pair_coeff should be the same
@@ -327,7 +342,8 @@ void PairPWMLFF::coeff(int narg, char** arg)
             {
                 error->all(FLERR, "This element is not included in the machine learning force field");
             }
-        }        
+        }
+        #endif        
     }
    if (count == 0) error->all(FLERR,"Incorrect args for pair coefficients");
 }
@@ -732,8 +748,12 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int
     // int ntypes = atom->ntypes;
     int ntypes = model_ntypes;
     int n_all = nlocal + nghost;
-    double rc2 = nep_gpu_models[0].paramb.rc_radial*nep_gpu_models[0].paramb.rc_radial;
-    double rc_a2 = nep_gpu_models[0].paramb.rc_angular*nep_gpu_models[0].paramb.rc_angular;
+    double rc2 =0;
+    double rc_a2 = 0;
+    #ifdef USE_CUDA
+    rc2 = nep_gpu_models[0].paramb.rc_radial*nep_gpu_models[0].paramb.rc_radial;
+    rc_a2 = nep_gpu_models[0].paramb.rc_angular*nep_gpu_models[0].paramb.rc_angular;
+    #endif
     double min_dR = 1000;
     double min_dR_all;
 
@@ -1036,6 +1056,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
     } // model_type == 1: nep_cpu version
     //   exploration mode.
     //   calculate the error of the force
+    #ifdef USE_CUDA
     else if (model_type == 2 and num_ff == 1) {
 
         is_build_neighbor = (current_timestep % neighbor->every == 0);
@@ -1227,7 +1248,7 @@ void PairPWMLFF::compute(int eflag, int vflag)
             } // if  ff_idx == 0
         } // for ff_idx
     } // nep gpu version multi models deviation
-
+    #endif 
     // for deviation of multi models
     if (num_ff > 1 && (current_timestep % out_freq == 0)) {
         // calculate model deviation with Force

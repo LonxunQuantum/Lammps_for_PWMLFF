@@ -13,7 +13,9 @@ PairStyle(pwmlff, PairPWMLFF);
 #ifndef LMP_PAIR_MLFF_H
 #define LMP_PAIR_MLFF_H
 #include "nep_cpu.h"
+#ifdef USE_CUDA
 #include "PWMLFF/NEP_GPU/force/nep3.cuh"
+#endif
 #include "pair.h"
 #include <iostream>
 #include <torch/script.h>
@@ -55,8 +57,9 @@ namespace LAMMPS_NS {
             bool use_nep_gpu;
             
             // NEP3 nep_gpu_model;
+            #ifdef USE_CUDA
             std::vector<NEP3> nep_gpu_models;
-
+            #endif
             // NEP3_CPU nep_cpu_model;
             std::vector<NEP3_CPU> nep_cpu_models;
 
