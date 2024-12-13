@@ -109,6 +109,10 @@ void PairPWMLFF::settings(int narg, char** arg)
 
     if (me == 0) {
         explrError_fp = fopen(&explrError_fname[0], "w");
+        fprintf(explrError_fp, "%9s %16s %16s %16s %16s %16s %16s\n", 
+        "#    step", "avg_devi_f", "min_devi_f", "max_devi_f", 
+        "avg_devi_e", "min_devi_e", "max_devi_e");
+        fflush(explrError_fp);
     }
 
     // device = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
@@ -374,18 +378,26 @@ void PairPWMLFF::init_style()
 }
 /* ---------------------------------------------------------------------- */
 
-std::pair<double, double> PairPWMLFF::calc_max_error(double ***f_n, double **e_atom_n)
+std::tuple<double, double, double, double, double, double> PairPWMLFF::calc_max_error(double ***f_n, double **e_atom_n)
 {
     int i, j;
     int ff_idx;
-    double max_err, err, max_err_ei, err_ei;
+    double max_err, err, min_err, max_err_ei, err_ei, min_err_ei;
+    double max_mean_err_out, max_mean_err;
+    double max_mean_ei_out, max_mean_ei;
     double num_ff_inv;
     int nlocal = atom->nlocal;
     // int *tag = atom->tag;
-
+    min_err = INFINITY;
+    min_err_ei = INFINITY;
     max_err = -1.0;
     max_err_ei = -1.0;
     num_ff_inv = 1.0 / num_ff;
+
+    max_mean_err_out = -1.0;
+    max_mean_err = 0.0;
+    max_mean_err_out = -1.0;
+    max_mean_ei = 0.0;
 
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         p_ff_idx = ff_idx;
@@ -394,12 +406,15 @@ std::pair<double, double> PairPWMLFF::calc_max_error(double ***f_n, double **e_a
 
     std::vector<double> f_ave;
     std::vector<double> f_err[num_ff];
+    std::vector<double> f_max_meanff;
     std::vector<double> ei_ave;
     std::vector<double> ei_err[num_ff];
+    std::vector<double> ei_max_meanff;
 
     f_ave.resize(nlocal * 3);
     ei_ave.resize(nlocal);
-
+    f_max_meanff.resize(nlocal);
+    ei_max_meanff.resize(nlocal);
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         f_err[ff_idx].resize(nlocal * 3);
         ei_err[ff_idx].resize(nlocal);
@@ -439,15 +454,28 @@ std::pair<double, double> PairPWMLFF::calc_max_error(double ***f_n, double **e_a
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         for (j = 0; j < nlocal * 3; j += 3) {
             err = f_err[ff_idx][j] * f_err[ff_idx][j] + f_err[ff_idx][j + 1] * f_err[ff_idx][j + 1] + f_err[ff_idx][j + 2] * f_err[ff_idx][j + 2];
+            f_max_meanff[j / 3] += err;
             err = sqrt(err);
             if (err > max_err) max_err = err;
+            if (err < min_err) min_err = err;
         }
         for (j = 0; j < nlocal; j++) {
-            err_ei = ei_err[ff_idx][j];
+            err_ei = ei_err[ff_idx][j] * ei_err[ff_idx][j];
+            ei_max_meanff[j] += err_ei;
+            err_ei = sqrt(err_ei);
             if (err_ei > max_err_ei) max_err_ei = err_ei;
+            if (err_ei < min_err_ei) min_err_ei = err_ei;
         }
     }
-    return std::make_pair(max_err, max_err_ei);
+
+    // find max_mean error
+    for (j = 0; j < nlocal; j++) {
+        max_mean_ei  = sqrt(ei_max_meanff[j]/ num_ff);
+        max_mean_err = sqrt(f_max_meanff[j] / num_ff);
+        if (max_mean_err_out < max_mean_err) max_mean_err_out = max_mean_err;
+        if (max_mean_ei_out < max_mean_ei) max_mean_ei_out = max_mean_ei;
+    }
+    return std::make_tuple(max_mean_err_out, max_err, min_err, max_mean_ei_out, max_err_ei, min_err_ei);
 
 }
 
@@ -847,6 +875,8 @@ void PairPWMLFF::compute(int eflag, int vflag)
 
     bool is_build_neighbor = false;
     double max_err, global_max_err, max_err_ei, global_max_err_ei;
+    double min_err, global_min_err, min_err_ei, global_min_err_ei;
+    double max_mean_err_out, global_max_mean_err, max_mean_ei_out, global_max_mean_err_ei;
 
     double* per_atom_potential = nullptr;
     double** per_atom_virial = nullptr;
@@ -1252,18 +1282,35 @@ void PairPWMLFF::compute(int eflag, int vflag)
     // for deviation of multi models
     if (num_ff > 1 && (current_timestep % out_freq == 0)) {
         // calculate model deviation with Force
-        std::pair<double, double> result = calc_max_error(f_n, e_atom_n);
-        max_err = result.first;
-        max_err_ei = result.second;
+        std::tuple<double, double, double, double, double, double> result = calc_max_error(f_n, e_atom_n);
+
+        max_mean_err_out = std::get<0>(result);
+        max_err = std::get<1>(result);
+        min_err = std::get<2>(result);
+        max_mean_ei_out = std::get<3>(result);
+        max_err_ei = std::get<4>(result);
+        min_err_ei = std::get<5>(result);
+
+        // max_err = result.first;
+        // max_err_ei = result.second;
+
         MPI_Allreduce(&max_err, &global_max_err, 1, MPI_DOUBLE, MPI_MAX, world);
+        MPI_Allreduce(&min_err, &global_min_err, 1, MPI_DOUBLE, MPI_MAX, world);
+        MPI_Allreduce(&max_mean_err_out, &global_max_mean_err, 1, MPI_DOUBLE, MPI_MAX, world);
+
         MPI_Allreduce(&max_err_ei, &global_max_err_ei, 1, MPI_DOUBLE, MPI_MAX, world);
+        MPI_Allreduce(&min_err_ei, &global_min_err_ei, 1, MPI_DOUBLE, MPI_MAX, world);
+        MPI_Allreduce(&max_mean_ei_out, &global_max_mean_err_ei, 1, MPI_DOUBLE, MPI_MAX, world);
 
         max_err_list.push_back(global_max_err);
         max_err_ei_list.push_back(global_max_err_ei);
 
         if (current_timestep % out_freq == 0) {
             if (me == 0) {
-                fprintf(explrError_fp, "%9d %16.9f %16.9f\n", (max_err_list.size()-1)*out_freq, global_max_err, global_max_err_ei);
+                // fprintf(explrError_fp, "%9d %16.9f %16.9f\n", (max_err_list.size()-1)*out_freq, global_max_err, global_max_err_ei);
+                fprintf(explrError_fp, "%9d %16.9f %16.9f %16.9f %16.9f %16.9f %16.9f\n", 
+                            current_timestep, max_mean_err_out, min_err, max_err, 
+                                max_mean_ei_out, min_err_ei, max_err_ei);
                 fflush(explrError_fp);
             } 
         }

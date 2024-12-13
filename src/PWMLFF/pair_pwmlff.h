@@ -43,7 +43,7 @@ namespace LAMMPS_NS {
             int pack_reverse_comm(int, int, double* ) override;
             void unpack_reverse_comm(int, int*, double* ) override;
             void grow_memory();
-            std::pair<double, double> calc_max_error(double***, double**);
+            std::tuple<double, double, double, double, double, double> calc_max_error(double***, double**);
 
         protected:
             virtual void allocate();
@@ -68,6 +68,10 @@ namespace LAMMPS_NS {
 
             std::vector<double> max_err_list;
             std::vector<double> max_err_ei_list;
+            std::vector<double> min_err_list;
+            std::vector<double> min_err_ei_list;
+            std::vector<double> max_mean_err_list;
+            std::vector<double> max_mean_err_ei_list;
             std::string explrError_fname = "explr.error";
             std::FILE *explrError_fp;
             int out_freq = 1;
