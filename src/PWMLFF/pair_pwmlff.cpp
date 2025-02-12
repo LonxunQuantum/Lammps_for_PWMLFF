@@ -82,11 +82,14 @@ void PairPWMLFF::settings(int narg, char** arg)
     int ff_idx;
     int iarg = 1;  // index of arg after 'num_ff'
     int rank;
-    int num_devices;
+    int num_devices = 0;
 
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    cudaGetDeviceCount(&num_devices);
-
+    #ifdef USE_CUDA
+        cudaGetDeviceCount(&num_devices);
+    #else
+        num_devices = 0;
+    #endif
     if (narg <= 0) error->all(FLERR, "Illegal pair_style command"); // numbers of args after 'pair_style pwmlff'
     std::vector<std::string> models;
 

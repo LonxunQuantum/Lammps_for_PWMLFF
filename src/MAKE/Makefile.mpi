@@ -95,12 +95,13 @@ JPG_LIB =
 
 # ---------------------------------------------------------------------
 # Conditional CUDA checks
-CUDA_LIB_EXISTS := $(shell test -d $(CUDA_HOME)/lib64 && echo 1 || echo 0)
-ifeq ($(CUDA_LIB_EXISTS), 1)
-        $(info CUDA support enabled...)
+NVCC_EXISTS := $(shell which nvcc > /dev/null 2>&1 && echo 1 || echo 0)
+
+ifeq ($(NVCC_EXISTS), 1)
+        $(info nvcc found. CUDA support enabled...)
         CUDA_ENABLED = 1
 else
-        $(info CUDA_HOME/lib64 not found. Disabling CUDA support...)
+        $(info nvcc not found. Disabling CUDA support...)
         CUDA_ENABLED = 0
 endif
 
