@@ -1,5 +1,3 @@
-#include <torch/script.h>
-#include <torch/torch.h>
 #include <iostream>
 #include <chrono>
 #include <cmath>
@@ -22,6 +20,7 @@
 #ifdef USE_CUDA
 #include <cuda_runtime.h>
 #endif
+#include <algorithm>
 using namespace LAMMPS_NS;
 
 /* ---------------------------------------------------------------------- */
@@ -86,15 +85,13 @@ void PairPWMLFF::settings(int narg, char** arg)
     int num_devices;
 
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    num_devices = torch::cuda::device_count();
+    cudaGetDeviceCount(&num_devices);
 
     if (narg <= 0) error->all(FLERR, "Illegal pair_style command"); // numbers of args after 'pair_style pwmlff'
     std::vector<std::string> models;
 
     num_ff = utils::inumeric(FLERR, arg[0], false, lmp);    // number of models
-    // for (int ii = 1; ii < iarg; ++ii) {
-    //     models.push_back(arg[ii]);                          // model files
-    // }
+
     for (int ii = 0; ii < num_ff; ++ii) {
         models.push_back(arg[iarg++]);                          // model files
     }
@@ -109,20 +106,8 @@ void PairPWMLFF::settings(int narg, char** arg)
 
     if (me == 0) {
         explrError_fp = fopen(&explrError_fname[0], "w");
-        fprintf(explrError_fp, "%9s %16s %16s %16s %16s %16s %16s\n", 
-        "#    step", "avg_devi_f", "min_devi_f", "max_devi_f", 
-        "avg_devi_e", "min_devi_e", "max_devi_e");
-        fflush(explrError_fp);
     }
 
-    // device = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-    torch::DeviceType device_type = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
-    device = device_type == torch::kCUDA ?  torch::Device(device_type, rank % num_devices) : torch::Device(device_type);
-    dtype = torch::kFloat64;
-
-    // std::cout<<"the numbor of gpu is " <<  num_devices << std::endl;
-    // std::cout<<"the mpi process is " << comm->nprocs << std::endl;
-    
     if (me == 0) utils::logmesg(this -> lmp, "<---- Loading model ---->");
     
     if (num_devices < 1) {
@@ -140,102 +125,36 @@ void PairPWMLFF::settings(int narg, char** arg)
 
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         std::string model_file = models[ff_idx];
-        try
-        {   // load jit model, they are DP, or NEP
-            // module = torch::jit::load(model_file, c10::Device(device)); 
-            module = torch::jit::load(model_file, device);
-            module.to(dtype);
-            // module.eval();
-            modules.push_back(module);
-            if (me == 0) printf("\nLoading jitscript model file:   %s\n", model_file.c_str());
-            model_type = 0;
+        // load txt format model file, it should be nep
+        bool is_rank_0 = (comm->me == 0);
+
+        // if the gpu nums > 0 and libnep.so is exsits, use gpu model
+        if (ff_idx > 0) {
+            is_rank_0 = false; //for print
         }
-        catch (const c10::Error e)
-        {
-            // load txt format model file, it should be nep
-            try {
-                bool is_rank_0 = (comm->me == 0);
+        #ifdef USE_CUDA
+        if (use_nep_gpu == true) {
+            int device_id = rank % num_devices;
+            cudaSetDevice(device_id);
 
-                // if (num_devices < 1) {
-                //     std::cout << "Can not find the GPU devices. The nep cpu version will be used for lammps!" << std::endl;
-                //     use_nep_gpu = false;
-                // } else {
-                //     // std::cout << "The GPU device will be used!" << std::endl;
-                //     use_nep_gpu = true;
-                // }
-
-                // if the gpu nums > 0 and libnep.so is exsits, use gpu model
-                if (ff_idx > 0) {
-                    is_rank_0 = false; //for print
-                }
-                #ifdef USE_CUDA
-                if (use_nep_gpu == true) {
-                    int device_id = rank % num_devices;
-                    cudaSetDevice(device_id);
-
-                    nep_gpu_models[ff_idx].init_from_file(model_file.c_str(), is_rank_0, device_id);
-                    model_type = 2;
-                    if (device_id == 0) {
-                        printf("MPI rank %d rank using GPU device %d\n", rank, device_id);
-                    }
-                    // std::cout<<"load nep.txt success and the model type is 2" << std::endl;
-                }
-                #endif
-                
-                if(use_nep_gpu == false) {
-                    // NEP3_CPU nep_cpu_model;
-                    // nep_cpu_model.init_from_file(model_file, is_rank_0);
-                    nep_cpu_models[ff_idx].init_from_file(model_file, is_rank_0);
-                    model_type = 1;
-                }
-                if (me == 0) printf("\nLoading txt model file:   %s\n", model_file.c_str());
-                
-            } catch (const c10::Error e) {
-                std::cerr << "Failed to load model :" << e.msg() << std::endl;
+            nep_gpu_models[ff_idx].init_from_file(model_file.c_str(), is_rank_0, device_id);
+            model_type = 2;
+            if (device_id == 0) {
+                printf("MPI rank %d rank using GPU device %d\n", rank, device_id);
             }
+            // std::cout<<"load nep.txt success and the model type is 2" << std::endl;
         }
-    }
-    if (model_type == 0) {
-        if ((device_type == torch::kCUDA) && (rank == 0)) {
-            if (num_devices < comm->nprocs) {
-            std::cout << "----------------------------------------------------------------------------------" << std::endl;
-            std::cout << " Warning: There are " << num_devices << " GPUs available " << std::endl;
-            std::cout << " But have " << comm->nprocs << " MPI processes, may result in poor performance!!!" << std::endl;
-            std::cout << "----------------------------------------------------------------------------------" << std::endl;
-            }
-        }
-        try {
-            torch::jit::IValue model_type_value = module.attr("model_type");
-            model_name = model_type_value.toString()->string();
-        }
-        catch (const torch::jit::ObjectAttributeError& e) {
-            model_name = "DP";
-        }
-        if (model_name == "DP") {
-            cutoff = module.attr("Rmax").toDouble();
-        } else if (model_name == "NEP") {
-            // 设置nep的参数
-            cutoff_radial  = module.attr("cutoff_radial").toDouble();
-            cutoff = cutoff_radial;
-            cutoff_angular = module.attr("cutoff_angular").toDouble();
-        } else {
-            std::cout << "ERROR: the model_type of input model " << model_name << " is not supported! Please check the input model! " << std::endl;
-            error->universe_all(FLERR, "ERROR: the model_type of input model is not supported! Please check the input model!");
-        }
-
-        //common params of DP and NEP
-        max_neighbor = module.attr("maxNeighborNum").toInt();
+        #endif
         
-        // print information
-        if (me == 0) {
-        utils::logmesg(this -> lmp, "<---- Load model successful!!! ---->");
-        printf("\nDevice:       %s", device == torch::kCPU ? "CPU" : "GPU");
-        printf("\nModel type:   %5d",5);
-        printf("\nModel nums:   %5d",num_ff);
-        printf("\ncutoff :      %12.6f",cutoff);
-        printf("\nmax_neighbor: %5d\n", max_neighbor);
+        if(use_nep_gpu == false) {
+            // NEP3_CPU nep_cpu_model;
+            // nep_cpu_model.init_from_file(model_file, is_rank_0);
+            nep_cpu_models[ff_idx].init_from_file(model_file, is_rank_0);
+            model_type = 1;
         }
-    } else if (model_type == 1) {
+        if (me == 0) printf("\nLoading txt model file:   %s\n", model_file.c_str());
+    }
+    if (model_type == 1) {
         cutoff = nep_cpu_models[0].paramb.rc_radial;
     } else if (model_type == 2) {
         #ifdef USE_CUDA
@@ -273,28 +192,7 @@ void PairPWMLFF::coeff(int narg, char** arg)
         }
     }
 
-    if (model_type == 0) {
-        auto atom_type_module = module.attr("atom_type").toList();
-        model_ntypes = atom_type_module.size();
-        if (ntypes > model_ntypes || ntypes != narg - 2)  // type numbers in strucutre file and in pair_coeff should be the same
-        {
-            error->all(FLERR, "Element mapping is not correct, ntypes = " + std::to_string(ntypes));
-        }
-        for (int ii = 2; ii < narg; ++ii) {
-            int temp = std::stoi(arg[ii]);
-            auto iter = std::find(atom_type_module.begin(), atom_type_module.end(), temp);   
-            if (iter != atom_type_module.end() || arg[ii] == 0)
-            {
-                int index = std::distance(atom_type_module.begin(), iter);
-                model_atom_type_idx.push_back(index);
-                atom_types.push_back(temp);
-            }
-            else
-            {
-                error->all(FLERR, "This element is not included in the machine learning force field");
-            }
-        }
-    } else if (model_type == 1) {
+    if (model_type == 1) {
         std::vector<int> atom_type_module = nep_cpu_models[0].element_atomic_number_list;
         model_ntypes = atom_type_module.size();
         if (ntypes > model_ntypes || ntypes != narg - 2)  // type numbers in strucutre file and in pair_coeff should be the same
@@ -378,26 +276,18 @@ void PairPWMLFF::init_style()
 }
 /* ---------------------------------------------------------------------- */
 
-std::tuple<double, double, double, double, double, double> PairPWMLFF::calc_max_error(double ***f_n, double **e_atom_n)
+std::pair<double, double> PairPWMLFF::calc_max_error(double ***f_n, double **e_atom_n)
 {
     int i, j;
     int ff_idx;
-    double max_err, err, min_err, max_err_ei, err_ei, min_err_ei;
-    double max_mean_err_out, max_mean_err;
-    double max_mean_ei_out, max_mean_ei;
+    double max_err, err, max_err_ei, err_ei;
     double num_ff_inv;
     int nlocal = atom->nlocal;
     // int *tag = atom->tag;
-    min_err = INFINITY;
-    min_err_ei = INFINITY;
+
     max_err = -1.0;
     max_err_ei = -1.0;
     num_ff_inv = 1.0 / num_ff;
-
-    max_mean_err_out = -1.0;
-    max_mean_err = 0.0;
-    max_mean_err_out = -1.0;
-    max_mean_ei = 0.0;
 
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         p_ff_idx = ff_idx;
@@ -406,15 +296,12 @@ std::tuple<double, double, double, double, double, double> PairPWMLFF::calc_max_
 
     std::vector<double> f_ave;
     std::vector<double> f_err[num_ff];
-    std::vector<double> f_max_meanff;
     std::vector<double> ei_ave;
     std::vector<double> ei_err[num_ff];
-    std::vector<double> ei_max_meanff;
 
     f_ave.resize(nlocal * 3);
     ei_ave.resize(nlocal);
-    f_max_meanff.resize(nlocal);
-    ei_max_meanff.resize(nlocal);
+
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         f_err[ff_idx].resize(nlocal * 3);
         ei_err[ff_idx].resize(nlocal);
@@ -454,28 +341,15 @@ std::tuple<double, double, double, double, double, double> PairPWMLFF::calc_max_
     for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
         for (j = 0; j < nlocal * 3; j += 3) {
             err = f_err[ff_idx][j] * f_err[ff_idx][j] + f_err[ff_idx][j + 1] * f_err[ff_idx][j + 1] + f_err[ff_idx][j + 2] * f_err[ff_idx][j + 2];
-            f_max_meanff[j / 3] += err;
             err = sqrt(err);
             if (err > max_err) max_err = err;
-            if (err < min_err) min_err = err;
         }
         for (j = 0; j < nlocal; j++) {
-            err_ei = ei_err[ff_idx][j] * ei_err[ff_idx][j];
-            ei_max_meanff[j] += err_ei;
-            err_ei = sqrt(err_ei);
+            err_ei = ei_err[ff_idx][j];
             if (err_ei > max_err_ei) max_err_ei = err_ei;
-            if (err_ei < min_err_ei) min_err_ei = err_ei;
         }
     }
-
-    // find max_mean error
-    for (j = 0; j < nlocal; j++) {
-        max_mean_ei  = sqrt(ei_max_meanff[j]/ num_ff);
-        max_mean_err = sqrt(f_max_meanff[j] / num_ff);
-        if (max_mean_err_out < max_mean_err) max_mean_err_out = max_mean_err;
-        if (max_mean_ei_out < max_mean_ei) max_mean_ei_out = max_mean_ei;
-    }
-    return std::make_tuple(max_mean_err_out, max_err, min_err, max_mean_ei_out, max_err_ei, min_err_ei);
+    return std::make_pair(max_err, max_err_ei);
 
 }
 
@@ -513,214 +387,6 @@ void PairPWMLFF::grow_memory()
     memory->grow(f_n, num_ff, nmax, 3, "pair_pwmlff:f_n");
     memory->grow(e_atom_n, num_ff, nmax, "pair_pwmlff:e_atom_n");
   }
-}
-
-std::tuple<std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::generate_neighdata()
-{   
-    int i, j, k, ii, jj, inum, jnum, itype, jtype;
-    double xtmp, ytmp, ztmp, delx, dely, delz, rsq, rij;
-    int *ilist, *jlist, *numneigh, **firstneigh;
-    int etnum;
-
-    double **x = atom->x;
-    int *type = atom->type;
-    int *tag = atom->tag;
-    int nlocal = atom->nlocal;
-    int nghost = atom->nghost;
-    // int ntypes = atom->ntypes;
-    int ntypes = model_ntypes;
-    int n_all = nlocal + nghost;
-    double rc2 = cutoff * cutoff;
-
-    double min_dR = 1000;
-    double min_dR_all;
-
-    inum = list->inum;
-    ilist = list->ilist;
-    numneigh = list->numneigh;
-    firstneigh = list->firstneigh;
-
-    std::vector<std::vector<int>> num_neigh(inum, std::vector<int>(ntypes));
-    // imagetype.resize(inum);
-    imagetype_map.resize(inum);
-    neighbor_list.resize(inum * ntypes * max_neighbor);
-    dR_neigh.resize(inum * ntypes * max_neighbor * 4);
-    // use_type.resize(n_all);
-    std::vector<int> type_to_model(n_all);
-
-
-    for (int ii = 0; ii < n_all; ii++)
-    {
-        // use_type[ii] = atom_types[type[ii] - 1];
-        type_to_model[ii] = model_atom_type_idx[type[ii] - 1] + 1;
-        // type[0], type[1], type[2], type[3], type[4], : 2, 2, 1, 2, 2, ...
-        // atom_types[0], atom_types[1] : 6, 1
-        // use_type[0], use_type[1], use_type[2], use_type[3], use_type[4] : 1, 1, 6, 1, 1, ...
-    }
-    for (i = 0; i < nlocal; i++) {
-        for (j = 0; j < ntypes; j++) {
-            num_neigh[i][j] = 0;
-        }
-    }
-    for (ii = 0; ii < inum; ii++)               // local atoms: 5, CH4
-    {    
-        i = ilist[ii];                          // 0, 1, 2, 3, 4
-        // itype = type[i];                        // 2, 2, 1, 2, 2
-        itype = type_to_model[i];                   // 1, 1, 3, 1, 1
-        jlist = firstneigh[i];
-        jnum = numneigh[i];                     // 4, 4, 4, 4, 4
-        imagetype_map[ii] = itype - 1;          // 1, 1, 0, 1, 1        python index from 0
-        // imagetype[ii] = use_type[i];            // 1, 1, 6, 1, 1
-
-        for (jj = 0; jj < jnum; jj++)
-        {
-            j = jlist[jj];                      // 1, 2, 3, 4;   0, 2, 3, 4;   0, 1, 3, 4;   0, 1, 2, 4;   0, 1, 2, 3
-            delx = x[j][0] - x[i][0];
-            dely = x[j][1] - x[i][1];
-            delz = x[j][2] - x[i][2];
-            rsq = delx * delx + dely * dely + delz * delz;
-            // jtype = type[j];                    // 2, 1, 2, 2;   2, 1, 2, 2;   2, 2, 2, 2;   2, 2, 1, 2;   2, 2, 1, 2
-            jtype = type_to_model[j];               // 1, 3, 1, 1;   1, 3, 1, 1;   1, 1, 1, 1;   1, 1, 3, 1;   1, 1, 3, 1
-            if (rsq <= rc2) 
-            {
-                etnum = num_neigh[i][jtype - 1];
-                rij = sqrt(rsq);
-                int index = i * ntypes * max_neighbor + (jtype - 1) * max_neighbor + etnum;
-                dR_neigh[index * 4 + 0] = rij;
-                dR_neigh[index * 4 + 1] = delx;
-                dR_neigh[index * 4 + 2] = dely;
-                dR_neigh[index * 4 + 3] = delz;
-                neighbor_list[index] = j + 1;
-                num_neigh[i][jtype - 1] += 1;
-                // std::cout << "num_neigh[" << i << "][" << jtype - 1 << "] = " << num_neigh[i][jtype - 1] << std::endl;
-                if (rsq < min_dR) min_dR = rsq;
-                // std::cout<< "nlist index " << index << " j " << j+1 << std::endl;
-            }
-        }
-    }
-
-    MPI_Allreduce(&min_dR, &min_dR_all, 1, MPI_DOUBLE, MPI_MIN, world);
-
-    if (min_dR_all < 0.61) {
-        if (me == 0) {
-            std::cout << "ERROR: there are two atoms too close, min_dR_all = " << min_dR_all << std::endl;
-        }
-        error->universe_all(FLERR, "there are two atoms too close");
-    }
-    return std::make_tuple(std::move(imagetype_map), std::move(neighbor_list), std::move(dR_neigh));
-    // return std::make_tuple(imagetype, imagetype_map, neighbor_list, dR_neigh);
-}
-
-std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<double>> PairPWMLFF::generate_neighdata_nep()
-{   
-    int i, j, k, ii, jj, inum, jnum, itype, jtype;
-    double xtmp, ytmp, ztmp, delx, dely, delz, rsq, rij;
-    int *ilist, *jlist, *numneigh, **firstneigh;
-    int etnum;
-
-    double **x = atom->x;
-    int *type = atom->type;
-    int *tag = atom->tag;
-    int nlocal = atom->nlocal;
-    int nghost = atom->nghost;
-    // int ntypes = atom->ntypes;
-    int ntypes = model_ntypes;
-    int n_all = nlocal + nghost;
-    double rc2 = cutoff * cutoff;
-
-    double min_dR = 1000;
-    double min_dR_all;
-
-    inum = list->inum;
-    ilist = list->ilist;
-    numneigh = list->numneigh;
-    firstneigh = list->firstneigh;
-
-    std::vector<std::vector<int>> num_neigh(inum, std::vector<int>(ntypes));
-    // imagetype.resize(inum);
-    imagetype_map.assign(inum, -1);
-    neighbor_list.assign(inum * ntypes * max_neighbor, 0);
-    neighbor_type_list.assign(inum * ntypes * max_neighbor, -1);
-    dR_neigh.assign(inum * ntypes * max_neighbor * 4, 0);
-    // use_type.resize(n_all);
-    std::vector<int> type_to_model(n_all);
-
-
-    for (int ii = 0; ii < n_all; ii++)
-    {
-        // use_type[ii] = atom_types[type[ii] - 1];
-        type_to_model[ii] = model_atom_type_idx[type[ii] - 1] + 1;
-        // type[0], type[1], type[2], type[3], type[4], : 2, 2, 1, 2, 2, ...
-        // atom_types[0], atom_types[1] : 6, 1
-        // use_type[0], use_type[1], use_type[2], use_type[3], use_type[4] : 1, 1, 6, 1, 1, ...
-    }
-    for (i = 0; i < nlocal; i++) {
-        for (j = 0; j < ntypes; j++) {
-            num_neigh[i][j] = 0;
-        }
-    }
-    for (ii = 0; ii < inum; ii++)               // local atoms: 5, CH4
-    {    
-        i = ilist[ii];                          // 0, 1, 2, 3, 4
-        // itype = type[i];                        // 2, 2, 1, 2, 2
-        itype = type_to_model[i];                   // 1, 1, 3, 1, 1
-        jlist = firstneigh[i];
-        jnum = numneigh[i];                     // 4, 4, 4, 4, 4
-        imagetype_map[ii] = itype - 1;          // 1, 1, 0, 1, 1        python index from 0
-        // imagetype[ii] = use_type[i];            // 1, 1, 6, 1, 1
-        int count_radial = 0;
-        for (jj = 0; jj < jnum; jj++)
-        {
-            j = jlist[jj];                      // 1, 2, 3, 4;   0, 2, 3, 4;   0, 1, 3, 4;   0, 1, 2, 4;   0, 1, 2, 3
-            delx = x[j][0] - x[i][0];
-            dely = x[j][1] - x[i][1];
-            delz = x[j][2] - x[i][2];
-            rsq = delx * delx + dely * dely + delz * delz;
-            // jtype = type[j];                    // 2, 1, 2, 2;   2, 1, 2, 2;   2, 2, 2, 2;   2, 2, 1, 2;   2, 2, 1, 2
-            jtype = type_to_model[j];               // 1, 3, 1, 1;   1, 3, 1, 1;   1, 1, 1, 1;   1, 1, 3, 1;   1, 1, 3, 1
-            if (rsq <= rc2) 
-            {   
-                //Wuxing: the DP use i to set dR_neigh, but I think it should be ii, the output of ilist is 0, 1, 2, 3, 4... , same as i 
-
-                // etnum = num_neigh[i][jtype - 1]; 
-                // rij = sqrt(rsq);
-                // int index = i * ntypes * max_neighbor + (jtype - 1) * max_neighbor + etnum;
-                // dR_neigh[index * 4 + 0] = rij;
-                // dR_neigh[index * 4 + 1] = delx;
-                // dR_neigh[index * 4 + 2] = dely;
-                // dR_neigh[index * 4 + 3] = delz;
-                // neighbor_list[index] = j + 1;
-                // num_neigh[i][jtype - 1] += 1;
-                // // std::cout << "num_neigh[" << i << "][" << jtype - 1 << "] = " << num_neigh[i][jtype - 1] << std::endl;
-                // if (rsq < min_dR) min_dR = rsq;
-
-                rij = sqrt(rsq);
-                int index = i * ntypes * max_neighbor;
-                neighbor_list[index + count_radial ] = j + 1;
-                neighbor_type_list[index + count_radial] = jtype-1;
-                dR_neigh[index*4 + 4*count_radial  ] = rij;
-                dR_neigh[index*4 + 4*count_radial+1] = delx;
-                dR_neigh[index*4 + 4*count_radial+2] = dely;
-                dR_neigh[index*4 + 4*count_radial+3] = delz;
-                count_radial++;
-                // std::cout<< "atom_I_ii " << ii << " index_I " << i << " type_I " << itype << "    atom_j_jj " << jj << " index_j " << j << " type_j " << jtype << " neigbor_start "<< index << std::endl;
-
-                // std::cout<< "nlist index " << index + count_radial << " count " << count_radial << " j " << j+1 << std::endl;
-
-            }
-        }
-    }
-
-    MPI_Allreduce(&min_dR, &min_dR_all, 1, MPI_DOUBLE, MPI_MIN, world);
-
-    if (min_dR_all < 0.61) {
-        if (me == 0) {
-            std::cout << "ERROR: there are two atoms too close, min_dR_all = " << min_dR_all << std::endl;
-        }
-        error->universe_all(FLERR, "there are two atoms too close");
-    }
-    return std::make_tuple(std::move(imagetype_map), std::move(neighbor_list), std::move(neighbor_type_list), std::move(dR_neigh));
-    // return std::make_tuple(imagetype, imagetype_map, neighbor_list, dR_neigh);
 }
 
 std::tuple<std::vector<int>, std::vector<int>, std::vector<double>>PairPWMLFF::convert_dim(bool is_build_neighbor){
@@ -761,102 +427,6 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<double>>PairPWMLFF::c
     return std::make_tuple(std::move(itype_convert_map), std::move(firstneighbor_cpu), std::move(position_cpu));
 }
 
-std::tuple<std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>, std::vector<int>, std::vector<float>> PairPWMLFF::generate_neighdata_nep_gpu()
-{   
-    int i, j, k, ii, jj, inum, jnum, itype, jtype;
-    double xtmp, ytmp, ztmp, delx, dely, delz, rsq, rij;
-    int *ilist, *jlist, *numneigh, **firstneigh;
-    int etnum;
-
-    double **x = atom->x;
-    int *type = atom->type;
-    int *tag = atom->tag;
-    int nlocal = atom->nlocal;
-    int nghost = atom->nghost;
-    // int ntypes = atom->ntypes;
-    int ntypes = model_ntypes;
-    int n_all = nlocal + nghost;
-    double rc2 =0;
-    double rc_a2 = 0;
-    #ifdef USE_CUDA
-    rc2 = nep_gpu_models[0].paramb.rc_radial*nep_gpu_models[0].paramb.rc_radial;
-    rc_a2 = nep_gpu_models[0].paramb.rc_angular*nep_gpu_models[0].paramb.rc_angular;
-    #endif
-    double min_dR = 1000;
-    double min_dR_all;
-
-    inum = list->inum;
-    ilist = list->ilist;
-    numneigh = list->numneigh;
-    firstneigh = list->firstneigh;
-    int NM = nep_gpu_nm;
-    int N_NM = inum * NM;
-    // imagetype.resize(inum);
-    neighbor_list.assign(N_NM, 0);
-    neighbor_angular_list.assign(N_NM, 0);
-    itype_convert_map.assign(n_all, -1);
-    neigbor_num_list.assign(inum, 0);
-    neigbor_angular_num_list.assign(inum, 0);
-    rij_nep_gpu.assign(N_NM * 6, 0);
-    // use_type.resize(n_all);
-    // std::vector<int> type_to_model(n_all);
-
-    for (int ii = 0; ii < n_all; ii++)
-    {
-        itype_convert_map[ii] = model_atom_type_idx[type[ii] - 1];
-    }
-
-    for (ii = 0; ii < inum; ii++)               // local atoms: 5, CH4
-    {    
-        i = ilist[ii];                          // 0, 1, 2, 3, 4, Although we found i==ilist [ii] during testing, it is possible that there may not be enough testing
-        // itype = type[i];                        // 2, 2, 1, 2, 2
-        itype = itype_convert_map[i];                   // 1, 1, 3, 1, 1
-        jlist = firstneigh[i];
-        jnum = numneigh[i];                     // 4, 4, 4, 4, 4
-        int count_radial = 0;
-        int count_angular =0;
-        for (jj = 0; jj < jnum; jj++)
-        {
-            j = jlist[jj];                      // 1, 2, 3, 4;   0, 2, 3, 4;   0, 1, 3, 4;   0, 1, 2, 4;   0, 1, 2, 3
-            delx = x[j][0] - x[i][0];
-            dely = x[j][1] - x[i][1];
-            delz = x[j][2] - x[i][2];
-            rsq = delx * delx + dely * dely + delz * delz;
-            // jtype = type[j];                    // 2, 1, 2, 2;   2, 1, 2, 2;   2, 2, 2, 2;   2, 2, 1, 2;   2, 2, 1, 2
-            jtype = itype_convert_map[j];               // 1, 3, 1, 1;   1, 3, 1, 1;   1, 1, 1, 1;   1, 1, 3, 1;   1, 1, 3, 1
-            if (rsq <= rc2) 
-            {
-                neighbor_list[count_radial * inum + i] = j;
-                rij_nep_gpu[0* N_NM + count_radial*inum+i] = delx;
-                rij_nep_gpu[1* N_NM + count_radial*inum+i] = dely;
-                rij_nep_gpu[2* N_NM + count_radial*inum+i] = delz;
-                count_radial++;
-            }
-            if (rsq <= rc_a2) 
-            {   
-                neighbor_angular_list[count_angular * inum + i] = j;
-                rij_nep_gpu[3* N_NM + count_angular*inum+i] = delx;
-                rij_nep_gpu[4* N_NM + count_angular*inum+i] = dely;
-                rij_nep_gpu[5* N_NM + count_angular*inum+i] = delz;
-                count_angular++;
-            }
-        }
-        neigbor_num_list[i] = count_radial;
-        neigbor_angular_num_list[i] = count_angular;
-    }
-
-    MPI_Allreduce(&min_dR, &min_dR_all, 1, MPI_DOUBLE, MPI_MIN, world);
-
-    if (min_dR_all < 0.61) {
-        if (me == 0) {
-            std::cout << "ERROR: there are two atoms too close, min_dR_all = " << min_dR_all << std::endl;
-        }
-        error->universe_all(FLERR, "there are two atoms too close");
-    }
-    return std::make_tuple(std::move(itype_convert_map), std::move(neighbor_list), std::move(neighbor_angular_list), std::move(neigbor_num_list), std::move(neigbor_angular_num_list), std::move(rij_nep_gpu));
-    // return std::make_tuple(imagetype, imagetype_map, neighbor_list, dR_neigh);
-}
-
 void PairPWMLFF::compute(int eflag, int vflag)
 {
     if (eflag || vflag) ev_setup(eflag, vflag);
@@ -875,135 +445,13 @@ void PairPWMLFF::compute(int eflag, int vflag)
 
     bool is_build_neighbor = false;
     double max_err, global_max_err, max_err_ei, global_max_err_ei;
-    double min_err, global_min_err, min_err_ei, global_min_err_ei;
-    double max_mean_err_out, global_max_mean_err, max_mean_ei_out, global_max_mean_err_ei;
 
     double* per_atom_potential = nullptr;
     double** per_atom_virial = nullptr;
     double *virial = force->pair->virial;
     double **f = atom->f;
     // for dp and nep model from jitscript
-    if (model_type == 0) {
-
-        int inum = list->inum;
-        double **x = atom->x;
-        int *type = atom->type;
-        // auto t4 = std::chrono::high_resolution_clock::now();
-        std::vector<int> imagetype_map, neighbor_list, neighbor_type_list;
-        std::vector<double> dR_neigh;
-
-        if (model_name == "DP") {
-            std::tie(imagetype_map, neighbor_list, dR_neigh) = generate_neighdata();
-        } else if (model_name == "NEP") {
-            // std::cout<< "==== do nep find neigh ====" << std::endl;
-            std::tie(imagetype_map, neighbor_list, neighbor_type_list, dR_neigh) = generate_neighdata_nep();
-        }
-        if (inum == 0) return;
-        // auto t5 = std::chrono::high_resolution_clock::now();
-        auto int_tensor_options = torch::TensorOptions().dtype(torch::kInt);
-        auto float_tensor_options = torch::TensorOptions().dtype(torch::kFloat64);
-        torch::Tensor imagetype_map_tensor = torch::from_blob(imagetype_map.data(), {inum}, int_tensor_options).to(device);
-        torch::Tensor neighbor_list_tensor = torch::from_blob(neighbor_list.data(), {1, inum, max_neighbor * model_ntypes}, int_tensor_options).to(device);
-        torch::Tensor dR_neigh_tensor = torch::from_blob(dR_neigh.data(), {1, inum, max_neighbor * model_ntypes, 4}, float_tensor_options).to(device,dtype);
-        torch::Tensor atom_type_tensor = torch::from_blob(atom_types.data(), {ntypes}, int_tensor_options).to(device);
-        
-        torch::Tensor neighbor_type_list_tensor;
-        if (model_name == "NEP") {
-            // std::cout<< "=========do neighbor_type_list to tensor ==========="<<std::endl;
-            neighbor_type_list_tensor = torch::from_blob(neighbor_type_list.data(), {1, inum, max_neighbor * model_ntypes}, int_tensor_options).to(device);
-        }
-        // auto t6 = std::chrono::high_resolution_clock::now();
-        /*
-        do forward for 4 models
-        only 1 is used for MD
-        1, 2, 3, 4 all for the deviation
-        */
-        for (ff_idx = 0; ff_idx < num_ff; ff_idx++) {
-            if (ff_idx > 0 && (current_timestep % out_freq != 0)) continue;
-            torch::Tensor Force;
-            torch::Tensor Ei;
-            torch::Tensor Etot;
-            torch::Tensor Virial;
-            if (model_name == "DP") {
-                auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, atom_type_tensor, dR_neigh_tensor, nghost}).toTuple();
-                Force = output->elements()[2].toTensor().to(torch::kCPU);
-                Ei = output->elements()[1].toTensor().to(torch::kCPU);
-                if (ff_idx == 0) {
-                    Etot = output->elements()[0].toTensor().to(torch::kCPU);
-                    Virial = output->elements()[4].toTensor().to(torch::kCPU);            
-                }
-            } else if (model_name == "NEP") {
-                // std::cout<< "=========do nep forward=========== nghost "<< nghost << std::endl;
-                auto output = modules[ff_idx].forward({neighbor_list_tensor, imagetype_map_tensor, atom_type_tensor, dR_neigh_tensor, neighbor_type_list_tensor, nghost}).toTuple();
-                Force = output->elements()[2].toTensor().to(torch::kCPU);
-                Ei = output->elements()[1].toTensor().to(torch::kCPU);
-                if (ff_idx == 0) {
-                    Etot = output->elements()[0].toTensor().to(torch::kCPU);
-                    Virial = output->elements()[4].toTensor().to(torch::kCPU);            
-                }
-            }
-            auto F_ptr = Force.accessor<double, 3>();
-            auto Ei_ptr = Ei.accessor<double, 2>();
-
-            if (num_ff > 1 && (current_timestep % out_freq == 0)) {
-                for (int i = 0; i < inum + nghost; i++)
-                {
-                    // f_n[ff_idx][i][0] = Force[0][i][0].item<double>();
-                    // f_n[ff_idx][i][1] = Force[0][i][1].item<double>();
-                    // f_n[ff_idx][i][2] = Force[0][i][2].item<double>();
-                    f_n[ff_idx][i][0] = F_ptr[0][i][0];
-                    f_n[ff_idx][i][1] = F_ptr[0][i][1];
-                    f_n[ff_idx][i][2] = F_ptr[0][i][2];
-                }
-                for (int ii = 0; ii < inum; ii++) {
-                    // e_atom_n[ff_idx][ii] = Ei[0][ii].item<double>();
-                    e_atom_n[ff_idx][ii] = Ei_ptr[0][ii];
-                }
-            }
-
-            if (ff_idx == 0) {
-                // Etot = output->elements()[0].toTensor().to(torch::kCPU);
-                // Virial = output->elements()[4].toTensor().to(torch::kCPU);
-                // if (output->elements()[4].isTensor()) {
-                //     calc_virial_from_mlff = true;
-                //     torch::Tensor Virial = output->elements()[4].toTensor().to(torch::kCPU);
-                // } else
-                //     auto Virial = output->elements()[4];
-                // get force
-
-                // auto F_ptr = Force.accessor<double, 3>();
-                // auto Ei_ptr = Ei.accessor<double, 2>();
-                auto V_ptr = Virial.accessor<double, 2>();
-
-                for (int i = 0; i < inum + nghost; i++)
-                {
-                    f[i][0] = F_ptr[0][i][0];
-                    f[i][1] = F_ptr[0][i][1];
-                    f[i][2] = F_ptr[0][i][2];
-                }
-
-                virial[0] = V_ptr[0][0];    // xx
-                virial[1] = V_ptr[0][4];    // yy
-                virial[2] = V_ptr[0][8];    // zz
-                virial[3] = V_ptr[0][1];    // xy
-                virial[4] = V_ptr[0][2];    // xz
-                virial[5] = V_ptr[0][5];    // yz
-
-                // get energy
-                if (eflag) eng_vdwl = Etot[0][0].item<double>();
-
-                if (eflag_atom)
-                {
-                    for (int ii = 0; ii < inum; ii++) {
-                        eatom[ii] = Ei_ptr[0][ii];
-                    }
-                }
-                // If virial needed calculate via F dot r.
-                // if (vflag_fdotr) virial_fdotr_compute();
-            }
-        }
-    } // if model_type == 0
-    else if (model_type == 1 and num_ff == 1) {
+    if (model_type == 1 and num_ff == 1) {
         double total_potential = 0.0;
         double total_virial[6] = {0.0};
         if (cvflag_atom) {
@@ -1120,16 +568,6 @@ void PairPWMLFF::compute(int eflag, int vflag)
         std::vector<double> cpu_force_per_atom(n_all * 3, 0.0);
         std::vector<double> cpu_total_virial(6, 0.0);
 
-        // std::tie(itype_convert_map, neighbor_list, neighbor_angular_list, neigbor_num_list, neigbor_angular_num_list, rij_nep_gpu) = generate_neighdata_nep_gpu();
-        // // for(int tmpi=0;tmpi< 10;tmpi++) {
-        // //     printf("before ei [%d] = %f", tmpi, cpu_potential_per_atom[tmpi]);
-        // // }
-        // printf("before compute nall %d nlocal %d nghost %d inum %d\n", n_all, atom->nlocal, atom->nghost, list->inum);
-
-        // nep_gpu_model.compute_small_box(
-        // n_all, atom->nlocal, list->inum, nep_gpu_nm, itype_convert_map.data(), neigbor_num_list.data(), neighbor_list.data(), neigbor_angular_num_list.data(), neighbor_angular_list.data(), rij_nep_gpu.data(), 
-        // cpu_potential_per_atom.data(), cpu_force_per_atom.data(), cpu_total_virial.data());
-       
         // 记录 convert_dim 函数的开始时间
         // auto start_convert_dim = std::chrono::high_resolution_clock::now();
         std::tie(itype_convert_map, firstneighbor_cpu, position_cpu) = convert_dim(is_build_neighbor);
@@ -1154,11 +592,6 @@ void PairPWMLFF::compute(int eflag, int vflag)
         cpu_total_virial.data());
         // auto end_compute_large_box_optim = std::chrono::high_resolution_clock::now();
         // auto duration_compute_large_box_optim = std::chrono::duration_cast<std::chrono::microseconds>(end_compute_large_box_optim - start_compute_large_box_optim).count();
-
-        // if (comm->me == 0) {
-        //     std::cout << "build %d " << is_build_neighbor << "convert_dim function took " << duration_convert_dim << " microseconds." << std::endl;
-        //     std::cout << "build %d " << is_build_neighbor << "compute_large_box_optim function took " << duration_compute_large_box_optim << " microseconds." << std::endl;
-        // }
 
         // for(int tmpi=0;tmpi< 10;tmpi++) {
         //     printf("after ei [%d] = %f", tmpi, cpu_potential_per_atom[tmpi]);
@@ -1282,35 +715,18 @@ void PairPWMLFF::compute(int eflag, int vflag)
     // for deviation of multi models
     if (num_ff > 1 && (current_timestep % out_freq == 0)) {
         // calculate model deviation with Force
-        std::tuple<double, double, double, double, double, double> result = calc_max_error(f_n, e_atom_n);
-
-        max_mean_err_out = std::get<0>(result);
-        max_err = std::get<1>(result);
-        min_err = std::get<2>(result);
-        max_mean_ei_out = std::get<3>(result);
-        max_err_ei = std::get<4>(result);
-        min_err_ei = std::get<5>(result);
-
-        // max_err = result.first;
-        // max_err_ei = result.second;
-
+        std::pair<double, double> result = calc_max_error(f_n, e_atom_n);
+        max_err = result.first;
+        max_err_ei = result.second;
         MPI_Allreduce(&max_err, &global_max_err, 1, MPI_DOUBLE, MPI_MAX, world);
-        MPI_Allreduce(&min_err, &global_min_err, 1, MPI_DOUBLE, MPI_MAX, world);
-        MPI_Allreduce(&max_mean_err_out, &global_max_mean_err, 1, MPI_DOUBLE, MPI_MAX, world);
-
         MPI_Allreduce(&max_err_ei, &global_max_err_ei, 1, MPI_DOUBLE, MPI_MAX, world);
-        MPI_Allreduce(&min_err_ei, &global_min_err_ei, 1, MPI_DOUBLE, MPI_MAX, world);
-        MPI_Allreduce(&max_mean_ei_out, &global_max_mean_err_ei, 1, MPI_DOUBLE, MPI_MAX, world);
 
         max_err_list.push_back(global_max_err);
         max_err_ei_list.push_back(global_max_err_ei);
 
         if (current_timestep % out_freq == 0) {
             if (me == 0) {
-                // fprintf(explrError_fp, "%9d %16.9f %16.9f\n", (max_err_list.size()-1)*out_freq, global_max_err, global_max_err_ei);
-                fprintf(explrError_fp, "%9d %16.9f %16.9f %16.9f %16.9f %16.9f %16.9f\n", 
-                            current_timestep, max_mean_err_out, min_err, max_err, 
-                                max_mean_ei_out, min_err_ei, max_err_ei);
+                fprintf(explrError_fp, "%9d %16.9f %16.9f\n", (max_err_list.size()-1)*out_freq, global_max_err, global_max_err_ei);
                 fflush(explrError_fp);
             } 
         }

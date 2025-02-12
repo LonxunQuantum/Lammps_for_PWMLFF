@@ -10,7 +10,6 @@ DYN_LIB = -ldl
 
 ROOT =   lmp
 EXE =    lmp_$@
-EXE_GPU =    lmp_$@_gpu
 ARLIB =  liblammps_$@.a
 SHLIB =  liblammps_$@.so
 ARLINK = liblammps.a
@@ -45,11 +44,13 @@ endif
 # PACKLIB    = all packages that require an additional lib
 #              should be PACKSYS + PACKINT + PACKEXT
 # PACKSYS    = subset that reqiure a common system library
-#              include MPIIO and LB b/c require full MPI, not just STUBS
+#              include LATBOLTZ b/c it requires a full MPI, not just STUBS
 # PACKINT    = subset that require an internal (provided) library
 # PACKEXT    = subset that require an external (downloaded) library
 
 PACKAGE = \
+	molecule \
+	kspace \
 	adios \
 	amoeba \
 	asphere \
@@ -73,6 +74,7 @@ PACKAGE = \
 	dpd-smooth \
 	drude \
 	eff \
+	extra-command \
 	extra-compute \
 	extra-dump \
 	extra-fix \
@@ -86,9 +88,7 @@ PACKAGE = \
 	interlayer \
 	kim \
 	kokkos \
-	kspace \
 	latboltz \
-	latte \
 	lepton \
 	machdyn \
 	manifold \
@@ -105,11 +105,9 @@ PACKAGE = \
 	ml-quip \
 	ml-rann \
 	ml-snap \
+	ml-uf3 \
 	mofff \
-	molecule \
 	molfile \
-	mpiio \
-	mscg \
 	netcdf \
 	openmp \
 	opt \
@@ -126,6 +124,7 @@ PACKAGE = \
 	reaction \
 	reaxff \
 	replica \
+	rheo \
 	rigid \
 	scafacos \
 	shock \
@@ -147,9 +146,11 @@ PACKAGE = \
 # NOTE: the last four packages must remain at the end since
 # they depend on other packages to be installed first.
 
-PACKBASIC = kspace manybody molecule rigid
+PACKBASIC = molecule kspace manybody rigid
 
 PACKMOST = \
+	kspace \
+	molecule \
 	amoeba \
 	asphere \
 	bocs \
@@ -169,6 +170,7 @@ PACKMOST = \
 	dpd-smooth \
 	drude \
 	eff \
+	extra-command \
 	extra-compute \
 	extra-dump \
 	extra-fix \
@@ -177,7 +179,6 @@ PACKMOST = \
 	fep \
 	granular \
 	interlayer \
-	kspace \
 	manybody \
 	mc \
 	meam \
@@ -185,7 +186,6 @@ PACKMOST = \
 	misc \
 	ml-snap \
 	mofff \
-	molecule \
 	openmp \
 	opt \
 	orient \
@@ -214,10 +214,7 @@ PACKLIB = \
 	gpu \
 	kim \
 	kokkos \
-	latte \
 	lepton \
-	mpiio \
-	mscg \
 	poems \
 	python \
 	voronoi \
@@ -237,12 +234,13 @@ PACKLIB = \
 	plumed \
 	qmmm \
 	ml-quip \
+	rheo \
 	scafacos \
 	machdyn \
 	vtk \
 	electrode
 
-PACKSYS = compress latboltz mpiio python
+PACKSYS = compress latboltz python
 
 PACKINT = atc awpmd colvars electrode gpu kokkos lepton ml-pod poems
 
@@ -250,16 +248,15 @@ PACKEXT = \
 	adios \
 	h5md \
 	kim \
-	latte \
 	machdyn \
 	ml-hdnnp \
 	ml-pace \
 	ml-quip \
 	molfile \
-	mscg \
 	netcdf \
 	plumed \
 	qmmm \
+	rheo \
 	scafacos \
 	voronoi \
 	vtk \
@@ -407,17 +404,11 @@ gitversion:
 	@cd $(objdir); rm -f .depend; \
 	$(MAKE) $(MFLAGS) "SRC = $(SRC)" "INC = $(INC)" depend || :
 	@rm -f $(ARLINK) $(SHLINK) $(EXE)
-	@rm -f $(ARLINK) $(SHLINK) $(EXE_GPU)
 ifeq ($(mode),static)
 	@cd $(objdir); \
 	$(MAKE) $(MFLAGS) "OBJ = $(OBJLIB)" "INC = $(INC)" "SHFLAGS =" \
 	  "LMPLIB = $(ARLIB)" "ARLIB = $(ARLIB)" "SHLIB = $(SHLIB)" \
 	  "LMPLINK = $(LMPLINK)" "DYN_LIB = $(DYN_LIB)" "EXE = ../$(EXE)" ../$(EXE)
-
-	@cd $(objdir); \
-	$(MAKE) $(MFLAGS) "OBJ = $(OBJLIB)" "INC = $(INC)" "SHFLAGS =" \
-	"LMPLIB = $(ARLIB)" "ARLIB = $(ARLIB)" "SHLIB = $(SHLIB)" \
-	"LMPLINK = $(LMPLINK)" "DYN_LIB = $(DYN_LIB)" "EXE_GPU = ../$(EXE_GPU)" ../$(EXE_GPU)
 	@ln -s $(ARLIB) $(ARLINK)
 endif
 ifeq ($(mode),shared)
@@ -425,11 +416,6 @@ ifeq ($(mode),shared)
 	$(MAKE) $(MFLAGS) "OBJ = $(OBJLIB)" "INC = $(INC)" \
 	  "LMPLIB = $(SHLIB)" "ARLIB = $(ARLIB)" "SHLIB = $(SHLIB)" \
 	  "LMPLINK = $(LMPLINK)" "DYN_LIB = $(DYN_LIB)" "EXE = ../$(EXE)" ../$(EXE)
-
-	@cd $(objdir); \
-	$(MAKE) $(MFLAGS) "OBJ = $(OBJLIB)" "INC = $(INC)" \
-	  "LMPLIB = $(SHLIB)" "ARLIB = $(ARLIB)" "SHLIB = $(SHLIB)" \
-	  "LMPLINK = $(LMPLINK)" "DYN_LIB = $(DYN_LIB)" "EXE_GPU = ../$(EXE_GPU)" ../$(EXE_GPU)
 	@ln -s $(SHLIB) $(SHLINK)
 endif
 # backward compatibility
@@ -450,10 +436,6 @@ ifeq ($(mode),print)
 	@cd $(objdir); \
 	$(MAKE) $(MFLAGS) "OBJ = $(OBJLIB)" "INC = $(INC)" \
 	  "EXE = ../$(ARLIB)" -f ../Makefile.print
-
-	@cd $(objdir); \
-	$(MAKE) $(MFLAGS) "OBJ = $(OBJLIB)" "INC = $(INC)" \
-	  "EXE_GPU = ../$(ARLIB)" -f ../Makefile.print
 endif
 
 # Remove machine-specific object files
@@ -484,7 +466,7 @@ mpi-stubs:
 sinclude ../lib/python/Makefile.lammps
 install-python:
 	@rm -rf ../python/build
-	@$(PYTHON) ../python/install.py -p ../python/lammps -l ../src/liblammps.so -w $(PWD)
+	@$(PYTHON) ../python/install.py -p ../python/lammps -l ../src/liblammps.so -w $(PWD) -v $(PWD)/version.h
 
 # Create a tarball of src dir and packages
 
@@ -498,7 +480,7 @@ tar:
 	@cd STUBS; $(MAKE)
 	@echo "Created $(ROOT)_src.tar.gz"
 
-check: check-whitespace check-permissions check-homepage check-errordocs check-version
+check: check-whitespace check-permissions check-homepage check-errordocs check-docs check-version
 
 check-whitespace:
 	$(PYTHON) ../tools/coding_standard/whitespace.py ..
@@ -524,8 +506,12 @@ check-errordocs:
 fix-errordocs:
 	$(PYTHON) ../tools/coding_standard/errordocs.py .. -f
 
+check-docs:
+	$(MAKE) $(MFLAGS) -C ../doc anchor_check style_check package_check role_check
+
 check-version:
-	$(PYTHON) ../tools/coding_standard/versiontags.py ..
+	$(PYTHON) ../tools/coding_standard/versiontags.py .. || echo
+
 
 format-src:
 	clang-format -i --verbose --style=file *.cpp *.h */*.cpp */*.h

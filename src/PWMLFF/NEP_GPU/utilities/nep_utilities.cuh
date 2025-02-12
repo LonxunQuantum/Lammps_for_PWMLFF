@@ -32,7 +32,7 @@ __constant__ float C4B[5] = {
 __constant__ float C5B[3] = {0.026596810706114f, 0.053193621412227f, 0.026596810706114f};
 
 const int SIZE_BOX_AND_INVERSE_BOX = 18; // (3 * 3) * 2
-const int MAX_NUM_N = 20;                // n_max+1 = 19+1
+const int MAX_NUM_N = 40;                // n_max+1 = 19+1
 const int MAX_DIM = MAX_NUM_N * 7;
 const int MAX_DIM_ANGULAR = MAX_NUM_N * 6;
 

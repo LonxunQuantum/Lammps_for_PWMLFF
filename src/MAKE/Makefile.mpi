@@ -26,22 +26,22 @@ CUDA_HOME = $(CUDADIR)
 CUDA_INC_PATH = $(CUDA_HOME)/include
 CUDA_LIB_PATH = $(CUDA_HOME)/lib64
 
-PYTORCH_PATH = $(shell python3 -c "import torch; print(torch.__path__[0])")
-CCFLAGS += -I$(PYTORCH_PATH)/include/
-CCFLAGS += -I$(PYTORCH_PATH)/include/torch/csrc/api/include/
+
+
+
 
 CCFLAGS += -I../PWMLFF/NEP_GPU/force/ -I../PWMLFF/NEP_GPU/utilities/
 
-PYTHON_LIB_PATH = $(shell python3-config --prefix)/lib
-LINKFLAGS += -L$(PYTHON_LIB_PATH) -lpython3.11 -static-libstdc++ -static-libgcc
-LINKFLAGS += -L$(PYTORCH_PATH)/lib/ -ltorch -lc10 -ltorch_cpu
 
-# Check if OP_LIB_PATH is set
-ifeq ($(OP_LIB_PATH),)
-$(error OP_LIB_PATH is not set)
-endif
-CPUFLAGS = $(LINKFLAGS) -L$(OP_LIB_PATH) -lCalcOps_bind_cpu
-GPUFLAGS = $(LINKFLAGS) -L$(OP_LIB_PATH) -lCalcOps_bind
+
+
+
+
+
+
+
+CPUFLAGS = $(LINKFLAGS)
+#GPUFLAGS = $(LINKFLAGS)
 
 # ---------------------------------------------------------------------
 # LAMMPS-specific settings, all OPTIONAL
@@ -95,34 +95,26 @@ JPG_LIB =
 
 # ---------------------------------------------------------------------
 # Conditional CUDA checks
-
-# Check if PyTorch has CUDA version
-TORCH_HAS_CUDA := $(shell python3 -c "import torch; print(torch.version.cuda is not None)")
 CUDA_LIB_EXISTS := $(shell test -d $(CUDA_HOME)/lib64 && echo 1 || echo 0)
-
-# Determine if CUDA is enabled
-ifeq ($(TORCH_HAS_CUDA), True)
-    ifeq ($(CUDA_LIB_EXISTS), 1)
+ifeq ($(CUDA_LIB_EXISTS), 1)
         $(info CUDA support enabled...)
         CUDA_ENABLED = 1
-    else
+else
         $(info CUDA_HOME/lib64 not found. Disabling CUDA support...)
         CUDA_ENABLED = 0
-    endif
-else
-    $(info PyTorch is not a CUDA version. Disabling CUDA support...)
-    CUDA_ENABLED = 0
 endif
 
 # If CUDA is enabled, include CUDA-related flags and libraries
 ifeq ($(CUDA_ENABLED), 1)
+    $(info CUDA support enabled...)
+    CUDA_ENABLED = 1
     CCFLAGS += -DUSE_CUDA
     CCFLAGS += -I$(NEP_CUDA_PATH)/include
     CCFLAGS += -I$(CUDA_INC_PATH)
     CCFLAGS += -I../PWMLFF/NEP_GPU/force/ -I../PWMLFF/NEP_GPU/utilities/
     LINKFLAGS += -L$(NEP_CUDA_PATH) -lnep_gpu
     LINKFLAGS += -L$(CUDA_LIB_PATH) -lcudart
-    GPUFLAGS = $(LINKFLAGS) -L$(OP_LIB_PATH) -lCalcOps_bind -L$(CUDA_LIB_PATH) -lcudart
+    CPUFLAGS = $(LINKFLAGS) -L$(CUDA_LIB_PATH) -lcudart
 endif
 
 # ---------------------------------------------------------------------
@@ -145,30 +137,18 @@ vpath %.h ..
 
 # Executable names
 EXE = ../lmp_mpi
-EXE_GPU = ../lmp_mpi_gpu
+#EXE_GPU = ../lmp_mpi_gpu
 
 # Default target
 .PHONY: mpi
 mpi: $(EXE)
-ifeq ($(CUDA_ENABLED), 1)
-	$(MAKE) $(EXE_GPU)
-endif
-
-# Link target for CPU-only executable
+#ifeq ($(CUDA_ENABLED), 1)
+#	$(MAKE) $(EXE_GPU)
+#endif
 
 $(EXE): main.o $(LMPLIB) $(EXTRA_LINK_DEPENDS)
 	$(LINK) $(CPUFLAGS) main.o $(EXTRA_PATH) $(LMPLINK) $(EXTRA_LIB) $(LIB) -o $@
 	$(SIZE) $@
-
-# Only build GPU executable if CUDA is enabled
-ifeq ($(CUDA_ENABLED), 1)
-$(EXE_GPU): main.o $(LMPLIB) $(EXTRA_LINK_DEPENDS)
-	$(LINK) $(GPUFLAGS) main.o $(EXTRA_PATH) $(LMPLINK) $(EXTRA_LIB) $(LIB) -o $@
-	$(SIZE) $@
-else
-$(EXE_GPU):
-	@echo "Skipping GPU version since CUDA is not enabled."
-endif
 
 # Library targets
 
