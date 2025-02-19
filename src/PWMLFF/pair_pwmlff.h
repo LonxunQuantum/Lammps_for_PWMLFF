@@ -41,7 +41,7 @@ namespace LAMMPS_NS {
             int pack_reverse_comm(int, int, double* ) override;
             void unpack_reverse_comm(int, int*, double* ) override;
             void grow_memory();
-            std::pair<double, double> calc_max_error(double***, double**);
+            std::tuple<double, double, double, double, double, double> calc_max_error(double***, double**);
 
         protected:
             virtual void allocate();
